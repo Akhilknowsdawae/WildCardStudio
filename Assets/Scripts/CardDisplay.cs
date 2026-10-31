@@ -39,10 +39,38 @@ public class CardDisplay : MonoBehaviour
 
         if (rankText != null)
         {
-            rankText.text = cardData != null ? cardData.cardRank.ToString() : string.Empty;
+            rankText.text = GetDisplayedRank();
         }
 
         UpdateSuitImages();
+    }
+
+    private string GetDisplayedRank()
+    {
+        if (cardData == null)
+        {
+            return string.Empty;
+        }
+
+        if (cardData.cardType != null)
+        {
+            if (cardData.cardType.Contains(WildCardStudio.CardType.King))
+            {
+                return "K";
+            }
+
+            if (cardData.cardType.Contains(WildCardStudio.CardType.Queen))
+            {
+                return "Q";
+            }
+
+            if (cardData.cardType.Contains(WildCardStudio.CardType.Jack))
+            {
+                return "J";
+            }
+        }
+
+        return cardData.cardRank.ToString();
     }
 
     public void UpdateSuitImages()

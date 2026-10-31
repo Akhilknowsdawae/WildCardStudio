@@ -16,8 +16,8 @@ namespace WildCardStudio
     public enum CardType
     {
         Number,
-        Queen,
         King,
+        Queen,
         Jack
     }
 

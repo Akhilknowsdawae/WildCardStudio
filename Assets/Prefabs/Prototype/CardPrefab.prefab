@@ -641,8 +641,8 @@ Transform:
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
   m_LocalPosition: {x: 0, y: 2.919, z: 0}
-  m_LocalScale: {x: 0.55, y: 0.54038, z: 0.54038}
-  m_ConstrainProportionsScale: 1
+  m_LocalScale: {x: 120, y: 125, z: 1}
+  m_ConstrainProportionsScale: 0
   m_Children:
   - {fileID: 760691746497640249}
   m_Father: {fileID: 0}
@@ -659,7 +659,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: f1e59653f1c56ff41860d23e31c0175b, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::CardDisplay
-  cardData: {fileID: 0}
+  cardData: {fileID: 11400000, guid: 4c4f94df5b00a3241beff2c9ace77f7d, type: 2}
   cardImage: {fileID: 3314427058768600563}
   rankText: {fileID: 6985898369473223962}
   typeImages:
