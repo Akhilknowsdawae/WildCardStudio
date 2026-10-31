@@ -353,7 +353,7 @@ namespace WildCardStudio
             {
                 InstanceId = Guid.NewGuid().ToString(),
                 Rank = 1,
-                Suit = Suit.Clubs,
+                Suit = Suit.Skulls,
                 Type = CardType.Number
             };
         }
@@ -364,7 +364,7 @@ namespace WildCardStudio
             {
                 InstanceId = Guid.NewGuid().ToString(),
                 Rank = 2,
-                Suit = Suit.Diamonds,
+                Suit = Suit.Candles,
                 Type = CardType.Number
             };
         }

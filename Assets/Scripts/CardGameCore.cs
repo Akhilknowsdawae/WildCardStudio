@@ -1,15 +1,16 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using LifeAfter;
 
 namespace WildCardStudio
 {
     public enum Suit
     {
-        Clubs,
-        Diamonds,
-        Hearts,
-        Spades
+        Skulls,
+        Candles,
+        Bones,
+        Bells
     }
 
     public enum CardType
@@ -17,7 +18,7 @@ namespace WildCardStudio
         Number,
         Queen,
         King,
-        Joker
+        Jack
     }
 
     public enum ComboType
@@ -180,12 +181,13 @@ namespace WildCardStudio
     public sealed class CardInstance
     {
         public string InstanceId;
+        public Card Definition;
         public int Rank;
         public Suit Suit;
         public CardType Type;
         public List<StatusEffectInstance> StatusEffects = new List<StatusEffectInstance>();
 
-        public bool IsSpecialCard => Type == CardType.Queen || Type == CardType.King || Type == CardType.Joker;
+        public bool IsSpecialCard => Type == CardType.Queen || Type == CardType.King || Type == CardType.Jack;
 
         public int EffectiveValue
         {

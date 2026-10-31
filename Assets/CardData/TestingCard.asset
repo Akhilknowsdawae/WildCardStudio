@@ -10,11 +10,11 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: d3d35a0066a852c4e91e1aa8d99a6143, type: 3}
-  m_Name: New Card
+  m_Name: TestingCard
   m_EditorClassIdentifier: Assembly-CSharp::LifeAfter.Card
-  cardName: 
-  cardRank: 0
-  suit: 
-  cardType: 
+  cardName: 4 of Candles
+  cardRank: 4
+  suit: 01000000
+  cardType: 00000000
   cardDescription: 
   cardImage: {fileID: 0}

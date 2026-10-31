@@ -9,23 +9,9 @@ namespace LifeAfter
     {
         public string cardName;
         public int cardRank;
-        public List<Suit> suit;
-        public List<CardType> cardType;
+        public List<WildCardStudio.Suit> suit;
+        public List<WildCardStudio.CardType> cardType;
         public string cardDescription;
         public Sprite cardImage;
-
-        public enum Suit
-        {
-            Skulls,
-            Candles,
-            Bones,
-            Bells
-        }
-
-        public enum CardType
-        {
-            Numbered,
-            Face
-        }
     }
 }

@@ -401,12 +401,12 @@ GameObject:
   - component: {fileID: 4280485235998016536}
   - component: {fileID: 4439262466422177654}
   m_Layer: 0
-  m_Name: SuitImage2
+  m_Name: SuitImageCandle
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 0
+  m_IsActive: 1
 --- !u!224 &5276593541319724401
 RectTransform:
   m_ObjectHideFlags: 0
@@ -416,7 +416,7 @@ RectTransform:
   m_GameObject: {fileID: 3094793661185016779}
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
   m_LocalPosition: {x: 0, y: 0, z: 0}
-  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_LocalScale: {x: 0.81438, y: 1.3893605, z: 0.81438}
   m_ConstrainProportionsScale: 0
   m_Children: []
   m_Father: {fileID: 3726368218084933130}
@@ -454,7 +454,7 @@ MonoBehaviour:
   m_OnCullStateChanged:
     m_PersistentCalls:
       m_Calls: []
-  m_Sprite: {fileID: -901267071, guid: c79117dd5d364c14ea9dc18735fa9a0c, type: 3}
+  m_Sprite: {fileID: -776849804, guid: c79117dd5d364c14ea9dc18735fa9a0c, type: 3}
   m_Type: 0
   m_PreserveAspect: 0
   m_FillCenter: 1
@@ -551,12 +551,12 @@ GameObject:
   - component: {fileID: 44851835362644125}
   - component: {fileID: 651771325862636475}
   m_Layer: 0
-  m_Name: SuitImage1
+  m_Name: SuitImageSkull
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 1
+  m_IsActive: 0
 --- !u!224 &1667907110860396014
 RectTransform:
   m_ObjectHideFlags: 0
@@ -623,6 +623,7 @@ GameObject:
   serializedVersion: 6
   m_Component:
   - component: {fileID: 859530130344665638}
+  - component: {fileID: 6603131311928046309}
   m_Layer: 0
   m_Name: CardPrefab
   m_TagString: Untagged
@@ -640,12 +641,32 @@ Transform:
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
   m_LocalPosition: {x: 0, y: 2.919, z: 0}
-  m_LocalScale: {x: 1, y: 1, z: 1}
-  m_ConstrainProportionsScale: 0
+  m_LocalScale: {x: 0.55, y: 0.54038, z: 0.54038}
+  m_ConstrainProportionsScale: 1
   m_Children:
   - {fileID: 760691746497640249}
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &6603131311928046309
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 5626841725555915195}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: f1e59653f1c56ff41860d23e31c0175b, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::CardDisplay
+  cardData: {fileID: 0}
+  cardImage: {fileID: 3314427058768600563}
+  rankText: {fileID: 6985898369473223962}
+  typeImages:
+  - {fileID: 651771325862636475}
+  - {fileID: 4439262466422177654}
+  - {fileID: 7296237781680683541}
+  - {fileID: 1715385854136679824}
 --- !u!1 &5851691948694916218
 GameObject:
   m_ObjectHideFlags: 0
@@ -658,7 +679,7 @@ GameObject:
   - component: {fileID: 7104764288420101071}
   - component: {fileID: 1715385854136679824}
   m_Layer: 0
-  m_Name: SuitImage4
+  m_Name: SuitImageBells
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
@@ -673,7 +694,7 @@ RectTransform:
   m_GameObject: {fileID: 5851691948694916218}
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
   m_LocalPosition: {x: 0, y: 0, z: 0}
-  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_LocalScale: {x: 1.0071098, y: 1.280038, z: 0.84602636}
   m_ConstrainProportionsScale: 0
   m_Children: []
   m_Father: {fileID: 3726368218084933130}
@@ -711,7 +732,7 @@ MonoBehaviour:
   m_OnCullStateChanged:
     m_PersistentCalls:
       m_Calls: []
-  m_Sprite: {fileID: -776849804, guid: c79117dd5d364c14ea9dc18735fa9a0c, type: 3}
+  m_Sprite: {fileID: 1636780905, guid: c79117dd5d364c14ea9dc18735fa9a0c, type: 3}
   m_Type: 0
   m_PreserveAspect: 0
   m_FillCenter: 1
@@ -808,7 +829,7 @@ GameObject:
   - component: {fileID: 276112895504540119}
   - component: {fileID: 7296237781680683541}
   m_Layer: 0
-  m_Name: SuitImage3
+  m_Name: SuitImageBones
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
@@ -861,7 +882,7 @@ MonoBehaviour:
   m_OnCullStateChanged:
     m_PersistentCalls:
       m_Calls: []
-  m_Sprite: {fileID: 1636780905, guid: c79117dd5d364c14ea9dc18735fa9a0c, type: 3}
+  m_Sprite: {fileID: -901267071, guid: c79117dd5d364c14ea9dc18735fa9a0c, type: 3}
   m_Type: 0
   m_PreserveAspect: 0
   m_FillCenter: 1
