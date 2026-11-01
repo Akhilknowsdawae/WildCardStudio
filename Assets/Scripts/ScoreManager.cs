@@ -58,7 +58,33 @@ public class ScoreManager : MonoBehaviour
         card.transform.SetAsLastSibling();
         cardsInPlay.Add(card);
         UpdatePlayedCardPositions();
+        RefreshCardDisplay(card);
         return true;
+    }
+
+    public bool RemovePlayedCard(GameObject card)
+    {
+        if (!cardsInPlay.Remove(card))
+        {
+            return false;
+        }
+
+        UpdatePlayedCardPositions();
+        return true;
+    }
+
+    private static void RefreshCardDisplay(GameObject card)
+    {
+        CardDisplay cardDisplay = card.GetComponent<CardDisplay>();
+        if (cardDisplay != null)
+        {
+            cardDisplay.UpdateCardDisplay();
+        }
+    }
+
+    public void RefreshPlayedCardPositions()
+    {
+        UpdatePlayedCardPositions();
     }
 
     private void UpdatePlayedCardPositions()

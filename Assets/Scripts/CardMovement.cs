@@ -4,7 +4,7 @@ using System.Collections.Generic;
 using LifeAfter;
 using WildCardStudio;
 
-public class CardMovement : MonoBehaviour, IDragHandler, IPointerDownHandler, IPointerEnterHandler, IPointerExitHandler
+public class CardMovement : MonoBehaviour, IDragHandler, IPointerDownHandler, IPointerEnterHandler, IPointerExitHandler, IPointerClickHandler
 {
     private static readonly List<CardMovement> cardsInPlay = new List<CardMovement>();
 
@@ -20,6 +20,11 @@ public class CardMovement : MonoBehaviour, IDragHandler, IPointerDownHandler, IP
     private Quaternion originalRotation;
     private Vector3 originalPosition;
     private bool isPlayed;
+    private bool isSelected;
+    private bool wasDragged;
+    private bool isDraggingPlayedCardToHand;
+
+    public bool IsSelected => isSelected;
 
     [SerializeField] private float selectScale = 1.2f; // Scale when selected
     [SerializeField] private GameObject glowEffect;
@@ -62,22 +67,35 @@ public class CardMovement : MonoBehaviour, IDragHandler, IPointerDownHandler, IP
                     CommitPlayState();
                 }
                 break;
+            case 4:
+                if (!Input.GetMouseButton(0))
+                {
+                    CommitReturnToHand();
+                }
+                break;
         }
     }
 
     private void TransitionToState0()
     {
-        currentState = 0;
+        currentState = isSelected ? 1 : 0;
         rectTransform.localScale = originalScale; //Reset Scale
         rectTransform.localRotation = originalRotation; //Reset Rotation
         rectTransform.localPosition = originalPosition; //Reset Position
-        glowEffect.SetActive(false); //Disable gloweffect
-        playArrow.SetActive(false); //Disable playArrow
+        if (glowEffect != null)
+        {
+            glowEffect.SetActive(isSelected);
+        }
+
+        if (playArrow != null)
+        {
+            playArrow.SetActive(false);
+        }
     }
 
     public void OnPointerEnter(PointerEventData eventData)
     {
-        if (currentState == 0 && !isPlayed) // Only transition to hovered state if currently in normal state
+        if (currentState == 0) // Only transition to hovered state if currently in normal state
         {
             originalPosition = rectTransform.localPosition; // Store the original position
             originalRotation = rectTransform.localRotation; // Store the original rotation
@@ -89,7 +107,7 @@ public class CardMovement : MonoBehaviour, IDragHandler, IPointerDownHandler, IP
 
     public void OnPointerExit(PointerEventData eventData)
     {
-        if (currentState == 1) // Only transition back to normal state if currently in hovered state
+        if (currentState == 1 && !isSelected) // Keep selected cards highlighted after the pointer leaves
         {
             currentState = 0;
             TransitionToState0();
@@ -98,22 +116,58 @@ public class CardMovement : MonoBehaviour, IDragHandler, IPointerDownHandler, IP
 
     public void OnPointerDown(PointerEventData eventData)
     {
-        if (currentState == 1 && dragPlane != null) // Only transition to dragged state if currently in hovered state
+        if (currentState == 1)
         {
-            currentState = 2;
+            dragPlane = rectTransform.parent as RectTransform;
+            if (dragPlane == null && canvas != null)
+            {
+                dragPlane = canvas.GetComponent<RectTransform>();
+            }
+
+            if (dragPlane == null)
+            {
+                return;
+            }
+
+            wasDragged = false;
+            isDraggingPlayedCardToHand = false;
+            currentState = isPlayed ? 4 : 2;
             RectTransformUtility.ScreenPointToLocalPointInRectangle(dragPlane, eventData.position, eventData.pressEventCamera, out originalLocalPointerPosition);
             originalPanelLocalPosition = rectTransform.localPosition;
         }
     }
 
+    public void OnPointerClick(PointerEventData eventData)
+    {
+        if (isPlayed || wasDragged)
+        {
+            return;
+        }
+
+        isSelected = !isSelected;
+        currentState = isSelected ? 1 : 0;
+        if (!isSelected)
+        {
+            TransitionToState0();
+        }
+    }
+
     public void OnDrag(PointerEventData eventData)
     {
-        if ((currentState == 2 || currentState == 3) && dragPlane != null)
+        if ((currentState == 2 || currentState == 3 || currentState == 4) && dragPlane != null)
         {
+            wasDragged = true;
             Vector2 localPointerPosition;
             if (RectTransformUtility.ScreenPointToLocalPointInRectangle(dragPlane, eventData.position, eventData.pressEventCamera, out localPointerPosition))
             {
-                if (currentState == 2)
+                if (currentState == 4)
+                {
+                    Vector3 targetPosition = originalPanelLocalPosition + (Vector3)(localPointerPosition - originalLocalPointerPosition);
+                    rectTransform.localPosition = Vector3.Lerp(rectTransform.localPosition, targetPosition, lerpFactor);
+                    isDraggingPlayedCardToHand = scoreManager != null
+                        && localPointerPosition.y < scoreManager.GetPlayPosition(dragPlane).y;
+                }
+                else if (currentState == 2)
                 {
                     Vector3 targetPosition = originalPanelLocalPosition + (Vector3)(localPointerPosition - originalLocalPointerPosition);
                     rectTransform.localPosition = Vector3.Lerp(rectTransform.localPosition, targetPosition, lerpFactor);
@@ -139,7 +193,10 @@ public class CardMovement : MonoBehaviour, IDragHandler, IPointerDownHandler, IP
     private void HandleHoverState()
     {
         rectTransform.localScale = originalScale * selectScale; //Scale up the card
-        glowEffect.SetActive(true); //Enable gloweffect
+        if (glowEffect != null)
+        {
+            glowEffect.SetActive(true);
+        }
     }
 
     private void HandleDragState()
@@ -193,17 +250,7 @@ public class CardMovement : MonoBehaviour, IDragHandler, IPointerDownHandler, IP
     {
         if (scoreManager != null && scoreManager.AddPlayedCard(gameObject))
         {
-            RemoveFromPlayArea();
-            isPlayed = true;
-            currentState = 0;
-            rectTransform.localScale = originalScale;
-            rectTransform.localRotation = Quaternion.identity;
-            glowEffect.SetActive(false);
-            playArrow.SetActive(false);
-            if (handManager != null)
-            {
-                handManager.RemoveCardFromHand(gameObject);
-            }
+            MarkAsPlayed();
             return;
         }
 
@@ -214,6 +261,77 @@ public class CardMovement : MonoBehaviour, IDragHandler, IPointerDownHandler, IP
 
         RemoveFromPlayArea();
         TransitionToState0();
+    }
+
+    private void CommitReturnToHand()
+    {
+        if (isDraggingPlayedCardToHand && scoreManager != null && handManager != null
+            && handManager.ReturnCardToHand(gameObject))
+        {
+            scoreManager.RemovePlayedCard(gameObject);
+            isPlayed = false;
+            isSelected = false;
+            currentState = 0;
+            if (glowEffect != null)
+            {
+                glowEffect.SetActive(false);
+            }
+
+            if (playArrow != null)
+            {
+                playArrow.SetActive(false);
+            }
+
+            return;
+        }
+
+        currentState = 0;
+        if (scoreManager != null)
+        {
+            scoreManager.RefreshPlayedCardPositions();
+        }
+
+        TransitionToState0();
+    }
+
+    public void MarkAsPlayed()
+    {
+        RemoveFromPlayArea();
+        isPlayed = true;
+        isSelected = false;
+        currentState = 0;
+        rectTransform.localScale = originalScale;
+        if (glowEffect != null)
+        {
+            glowEffect.SetActive(false);
+        }
+
+        if (playArrow != null)
+        {
+            playArrow.SetActive(false);
+        }
+
+        if (handManager != null)
+        {
+            handManager.RemoveCardFromHand(gameObject);
+        }
+    }
+
+    public void MarkAsReturnedToHand()
+    {
+        isPlayed = false;
+        isSelected = false;
+        currentState = 0;
+        rectTransform.localScale = originalScale;
+        if (glowEffect != null)
+        {
+            glowEffect.SetActive(false);
+        }
+
+        if (playArrow != null)
+        {
+            playArrow.SetActive(false);
+        }
     }
 
     public void SetHandManager(HandManager manager)

@@ -8,6 +8,7 @@ using System;
 public class HandManager : MonoBehaviour
 {
     public DeckManager deckManager; //Reference to the DeckManager script
+    [SerializeField] private PlayManager playManager;
     public GameObject cardPrefab; //Assign card prefab in the inspector
     public Transform handTransform; //Hand position
     public float fanSpread = 7.55f; //Angle between cards
@@ -41,8 +42,58 @@ public class HandManager : MonoBehaviour
         }
     }
 
+    public bool ReturnCardToHand(GameObject card)
+    {
+        if (card == null)
+        {
+            Debug.LogError("Cannot return a null card to the hand.", this);
+            return false;
+        }
+
+        if (handTransform == null)
+        {
+            Debug.LogError("Cannot return card to hand: assign a Hand Transform.", this);
+            return false;
+        }
+
+        if (!cardsInHand.Contains(card))
+        {
+            card.transform.SetParent(handTransform, false);
+            card.transform.SetAsLastSibling();
+            cardsInHand.Add(card);
+        }
+
+        CardMovement movement = card.GetComponent<CardMovement>();
+        if (movement != null)
+        {
+            movement.SetHandManager(this);
+            movement.MarkAsReturnedToHand();
+        }
+
+        UpdateCardPositions();
+        CardDisplay cardDisplay = card.GetComponent<CardDisplay>();
+        if (cardDisplay != null)
+        {
+            cardDisplay.UpdateCardDisplay();
+        }
+
+        return true;
+    }
+
     void Update()
     {
+        if (Input.GetKeyDown(KeyCode.Space))
+        {
+            if (playManager == null)
+            {
+                Debug.LogError("Cannot play selected cards: assign a PlayManager in the HandManager.", this);
+            }
+            else
+            {
+                playManager.PlaySelectedCards(this);
+            }
+        }
+
         if (updateHandCardPositionsContinuously)
         {
             UpdateCardPositions();
