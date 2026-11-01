@@ -2,6 +2,7 @@ using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 using LifeAfter;
+using WildCardStudio;
 using System;
 
 public class DeckManager : MonoBehaviour
@@ -17,6 +18,13 @@ public class DeckManager : MonoBehaviour
 
         //add the loaded cards to the allCards list
         allCards.AddRange(cards);
+
+        // Find the HandManager in the scene.
+        HandManager hand = FindFirstObjectByType<HandManager>();
+        for (int i = 0; i < 9; i++) //Draw 10 cards to start
+        {
+            DrawCard(hand);
+        }
     }
 
     public void DrawCard(HandManager handManager)

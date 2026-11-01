@@ -2,6 +2,7 @@ using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 using LifeAfter;
+using WildCardStudio;
 using System;
 
 public class HandManager : MonoBehaviour
@@ -32,7 +33,7 @@ public class HandManager : MonoBehaviour
 
     void Update()
     {
-        UpdateCardPositions();
+        //UpdateCardPositions();
     }
 
     private void UpdateCardPositions()
