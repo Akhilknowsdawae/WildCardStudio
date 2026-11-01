@@ -1,22 +1,27 @@
 using UnityEngine;
 using UnityEngine.EventSystems;
+using System.Collections.Generic;
 using LifeAfter;
 using WildCardStudio;
 
 public class CardMovement : MonoBehaviour, IDragHandler, IPointerDownHandler, IPointerEnterHandler, IPointerExitHandler
 {
+    private static readonly List<CardMovement> cardsInPlay = new List<CardMovement>();
+
     private RectTransform rectTransform;
     private Canvas canvas;
+    private RectTransform dragPlane;
+    private HandManager handManager;
+    private ScoreManager scoreManager;
     private Vector2 originalLocalPointerPosition;
     private Vector3 originalPanelLocalPosition;
     private Vector3 originalScale;
     private int currentState = 0; // 0: Normal, 1: Hovered, 2: Dragged
     private Quaternion originalRotation;
     private Vector3 originalPosition;
+    private bool isPlayed;
 
     [SerializeField] private float selectScale = 1.2f; // Scale when selected
-    [SerializeField] private Vector2 cardPlay;
-    [SerializeField] private Vector3 playPosition;
     [SerializeField] private GameObject glowEffect;
     [SerializeField] private GameObject playArrow;
     [SerializeField] private float lerpFactor = 0.1f; // Lerp factor for smooth movement
@@ -25,6 +30,12 @@ public class CardMovement : MonoBehaviour, IDragHandler, IPointerDownHandler, IP
     {
         rectTransform = GetComponent<RectTransform>();
         canvas = GetComponentInParent<Canvas>();
+        dragPlane = rectTransform.parent as RectTransform;
+        if (dragPlane == null && canvas != null)
+        {
+            dragPlane = canvas.GetComponent<RectTransform>();
+        }
+        scoreManager = FindFirstObjectByType<ScoreManager>();
         originalScale = rectTransform.localScale;
         originalRotation = rectTransform.localRotation;
         originalPosition = rectTransform.localPosition;
@@ -48,7 +59,7 @@ public class CardMovement : MonoBehaviour, IDragHandler, IPointerDownHandler, IP
                 HandlePlayState();
                 if (!Input.GetMouseButton(0)) // If mouse button is released
                 {
-                    TransitionToState0();
+                    CommitPlayState();
                 }
                 break;
         }
@@ -66,7 +77,7 @@ public class CardMovement : MonoBehaviour, IDragHandler, IPointerDownHandler, IP
 
     public void OnPointerEnter(PointerEventData eventData)
     {
-        if (currentState == 0) // Only transition to hovered state if currently in normal state
+        if (currentState == 0 && !isPlayed) // Only transition to hovered state if currently in normal state
         {
             originalPosition = rectTransform.localPosition; // Store the original position
             originalRotation = rectTransform.localRotation; // Store the original rotation
@@ -87,30 +98,39 @@ public class CardMovement : MonoBehaviour, IDragHandler, IPointerDownHandler, IP
 
     public void OnPointerDown(PointerEventData eventData)
     {
-        if (currentState == 1) // Only transition to dragged state if currently in hovered state
+        if (currentState == 1 && dragPlane != null) // Only transition to dragged state if currently in hovered state
         {
             currentState = 2;
-            RectTransformUtility.ScreenPointToLocalPointInRectangle(canvas.GetComponent<RectTransform>(), eventData.position, eventData.pressEventCamera, out originalLocalPointerPosition); //Using the event system to detect what is clicked on
+            RectTransformUtility.ScreenPointToLocalPointInRectangle(dragPlane, eventData.position, eventData.pressEventCamera, out originalLocalPointerPosition);
             originalPanelLocalPosition = rectTransform.localPosition;
         }
     }
 
     public void OnDrag(PointerEventData eventData)
     {
-        if (currentState == 2) // Only allow dragging if currently in dragged state
+        if ((currentState == 2 || currentState == 3) && dragPlane != null)
         {
             Vector2 localPointerPosition;
-            if (RectTransformUtility.ScreenPointToLocalPointInRectangle(canvas.GetComponent<RectTransform>(), eventData.position, eventData.pressEventCamera, out localPointerPosition))
+            if (RectTransformUtility.ScreenPointToLocalPointInRectangle(dragPlane, eventData.position, eventData.pressEventCamera, out localPointerPosition))
             {
-                
-                rectTransform.localPosition = Vector3.Lerp(rectTransform.position, Input.mousePosition, lerpFactor);
-
-                // Check if the card is in the play area
-                if (rectTransform.localPosition.y > cardPlay.y) //&& rectTransform.localPosition.x > cardPlay.x && rectTransform.localPosition.x < cardPlay.x + cardPlay.width)
+                if (currentState == 2)
                 {
-                    currentState = 3; // Transition to play state
-                    playArrow.SetActive(true); //Enable playArrow
-                    rectTransform.localPosition = Vector3.Lerp(rectTransform.position, playPosition, lerpFactor); //Snap to play position
+                    Vector3 targetPosition = originalPanelLocalPosition + (Vector3)(localPointerPosition - originalLocalPointerPosition);
+                    rectTransform.localPosition = Vector3.Lerp(rectTransform.localPosition, targetPosition, lerpFactor);
+                    if (scoreManager != null && localPointerPosition.y > scoreManager.GetPlayPosition(dragPlane).y)
+                    {
+                        AddToPlayArea();
+                        currentState = 3;
+                        playArrow.SetActive(true);
+                    }
+                }
+                else if (scoreManager != null && localPointerPosition.y < scoreManager.GetPlayPosition(dragPlane).y)
+                {
+                    RemoveFromPlayArea();
+                    currentState = 2;
+                    playArrow.SetActive(false);
+                    Vector3 targetPosition = originalPanelLocalPosition + (Vector3)(localPointerPosition - originalLocalPointerPosition);
+                    rectTransform.localPosition = Vector3.Lerp(rectTransform.localPosition, targetPosition, lerpFactor);
                 }
             }
         }
@@ -131,21 +151,78 @@ public class CardMovement : MonoBehaviour, IDragHandler, IPointerDownHandler, IP
 
     private void HandlePlayState()
     {
-        // Play logic is handled in OnDrag
-        //Set card rotation
-        rectTransform.localPosition = playPosition; //Snap to play position
-        rectTransform.localRotation = Quaternion.identity; //Scale up the card
+        rectTransform.localRotation = Quaternion.identity;
+        UpdatePlayPositions();
+    }
 
-        if (Input.mousePosition.y < cardPlay.y) // If the mouse is dragged below the play area
+    private void AddToPlayArea()
+    {
+        if (!cardsInPlay.Contains(this))
         {
-            currentState = 2; // Transition back to dragged state
-            playArrow.SetActive(false); //Disable playArrow
+            cardsInPlay.Add(this);
+            UpdatePlayPositions();
         }
     }
 
-    void Start()
+    private void RemoveFromPlayArea()
     {
-        rectTransform = GetComponent<RectTransform>();
-        canvas = GetComponentInParent<Canvas>();
+        if (cardsInPlay.Remove(this))
+        {
+            UpdatePlayPositions();
+        }
+    }
+
+    private static void UpdatePlayPositions()
+    {
+        cardsInPlay.RemoveAll(card => card == null);
+        if (cardsInPlay.Count == 0)
+        {
+            return;
+        }
+
+        float spacing = cardsInPlay[0].scoreManager.CardSpacing;
+        for (int i = 0; i < cardsInPlay.Count; i++)
+        {
+            CardMovement card = cardsInPlay[i];
+            Vector3 firstPlayPosition = card.scoreManager.GetPlayPosition(card.rectTransform.parent);
+            card.rectTransform.localPosition = firstPlayPosition + Vector3.right * (spacing * i);
+        }
+    }
+
+    private void CommitPlayState()
+    {
+        if (scoreManager != null && scoreManager.AddPlayedCard(gameObject))
+        {
+            RemoveFromPlayArea();
+            isPlayed = true;
+            currentState = 0;
+            rectTransform.localScale = originalScale;
+            rectTransform.localRotation = Quaternion.identity;
+            glowEffect.SetActive(false);
+            playArrow.SetActive(false);
+            if (handManager != null)
+            {
+                handManager.RemoveCardFromHand(gameObject);
+            }
+            return;
+        }
+
+        if (scoreManager == null)
+        {
+            Debug.LogError("Cannot record played card: no ScoreManager exists in the scene.", this);
+        }
+
+        RemoveFromPlayArea();
+        TransitionToState0();
+    }
+
+    public void SetHandManager(HandManager manager)
+    {
+        handManager = manager;
+    }
+
+    void OnDestroy()
+    {
+        RemoveFromPlayArea();
     }
 }

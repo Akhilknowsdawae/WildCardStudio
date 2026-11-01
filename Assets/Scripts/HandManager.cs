@@ -13,6 +13,7 @@ public class HandManager : MonoBehaviour
     public float fanSpread = 7.55f; //Angle between cards
     public float cardSpacing = 100f; //Spacing between cards
     public float verticalSpacing = 100f; //Vertical spacing between cards
+    [SerializeField] private bool updateHandCardPositionsContinuously;
     public List<GameObject> cardsInHand = new List<GameObject>(); //Hold a list of card objects in hand
     
     void Start()
@@ -25,15 +26,27 @@ public class HandManager : MonoBehaviour
         //Creating the cards here
         GameObject newCard = Instantiate(cardPrefab, handTransform.position, Quaternion.identity, handTransform);
         cardsInHand.Add(newCard);
+        newCard.GetComponent<CardMovement>().SetHandManager(this);
         
         newCard.GetComponent<CardDisplay>().cardData = cardData; //Set the card data to the new card
 
         UpdateCardPositions();
     }
 
+    public void RemoveCardFromHand(GameObject card)
+    {
+        if (cardsInHand.Remove(card))
+        {
+            UpdateCardPositions();
+        }
+    }
+
     void Update()
     {
-        //UpdateCardPositions();
+        if (updateHandCardPositionsContinuously)
+        {
+            UpdateCardPositions();
+        }
     }
 
     private void UpdateCardPositions()
