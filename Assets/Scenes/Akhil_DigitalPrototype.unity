@@ -787,8 +787,8 @@ RectTransform:
   - {fileID: 1928475031}
   - {fileID: 1611251604}
   - {fileID: 718370554}
-  - {fileID: 614004756}
   - {fileID: 1013871478}
+  - {fileID: 614004756}
   m_Father: {fileID: 2074437865}
   m_LocalEulerAnglesHint: {x: 89.269, y: 0, z: 0}
   m_AnchorMin: {x: 0, y: 0}
@@ -1014,13 +1014,13 @@ Transform:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 980045957}
   serializedVersion: 2
-  m_LocalRotation: {x: 0, y: -0.70710677, z: 0.70710677, w: 0}
-  m_LocalPosition: {x: 0.0014205925, y: 1.1, z: 12.17}
-  m_LocalScale: {x: 0.7400827, y: 1, z: 1.1212}
+  m_LocalRotation: {x: 0.27665046, y: -0.6507416, z: 0.6507416, w: -0.2766505}
+  m_LocalPosition: {x: 0.0014205, y: 1.1, z: 12.17}
+  m_LocalScale: {x: 0.7400827, y: 1, z: 1.5554452}
   m_ConstrainProportionsScale: 0
   m_Children: []
   m_Father: {fileID: 0}
-  m_LocalEulerAnglesHint: {x: 90, y: -90, z: 90}
+  m_LocalEulerAnglesHint: {x: 136.064, y: -90, z: 90}
 --- !u!1 &1013871477
 GameObject:
   m_ObjectHideFlags: 0
@@ -1241,14 +1241,16 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::PlayManager
   cardsInPlay: []
+  playedCardSets: []
   scoreManager: {fileID: 718370555}
   playedCardsParent: {fileID: 2108805788}
   playPositionReference: {fileID: 2108805787}
   fanSpread: 1
   cardSpacing: 54
+  spaceBetweenCardSets: 250
   verticalSpacing: 8
   cardScale: {x: 50, y: 60, z: 1}
-  updatePlayedCardPositionsContinuously: 1
+  updatePlayedCardPositionsContinuously: 0
 --- !u!1 &1923372202
 GameObject:
   m_ObjectHideFlags: 0

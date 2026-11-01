@@ -20,6 +20,7 @@ public class CardMovement : MonoBehaviour, IDragHandler, IPointerDownHandler, IP
     private Quaternion originalRotation;
     private Vector3 originalPosition;
     private bool isPlayed;
+    private bool isLockedInPlay;
     private bool isSelected;
     private bool wasDragged;
     private bool isDraggingPlayedCardToHand;
@@ -95,7 +96,7 @@ public class CardMovement : MonoBehaviour, IDragHandler, IPointerDownHandler, IP
 
     public void OnPointerEnter(PointerEventData eventData)
     {
-        if (currentState == 0) // Only transition to hovered state if currently in normal state
+        if (currentState == 0 && !isLockedInPlay) // Only transition to hovered state if currently in normal state
         {
             originalPosition = rectTransform.localPosition; // Store the original position
             originalRotation = rectTransform.localRotation; // Store the original rotation
@@ -116,7 +117,7 @@ public class CardMovement : MonoBehaviour, IDragHandler, IPointerDownHandler, IP
 
     public void OnPointerDown(PointerEventData eventData)
     {
-        if (currentState == 1)
+        if (currentState == 1 && !isLockedInPlay)
         {
             dragPlane = rectTransform.parent as RectTransform;
             if (dragPlane == null && canvas != null)
@@ -139,7 +140,7 @@ public class CardMovement : MonoBehaviour, IDragHandler, IPointerDownHandler, IP
 
     public void OnPointerClick(PointerEventData eventData)
     {
-        if (isPlayed || wasDragged)
+        if (isPlayed || isLockedInPlay || wasDragged)
         {
             return;
         }
@@ -154,7 +155,7 @@ public class CardMovement : MonoBehaviour, IDragHandler, IPointerDownHandler, IP
 
     public void OnDrag(PointerEventData eventData)
     {
-        if ((currentState == 2 || currentState == 3 || currentState == 4) && dragPlane != null)
+        if (!isLockedInPlay && (currentState == 2 || currentState == 3 || currentState == 4) && dragPlane != null)
         {
             wasDragged = true;
             Vector2 localPointerPosition;
@@ -294,10 +295,11 @@ public class CardMovement : MonoBehaviour, IDragHandler, IPointerDownHandler, IP
         TransitionToState0();
     }
 
-    public void MarkAsPlayed()
+    public void MarkAsPlayed(bool lockInPlay = false)
     {
         RemoveFromPlayArea();
         isPlayed = true;
+        isLockedInPlay = lockInPlay;
         isSelected = false;
         currentState = 0;
         rectTransform.localScale = originalScale;
@@ -320,6 +322,7 @@ public class CardMovement : MonoBehaviour, IDragHandler, IPointerDownHandler, IP
     public void MarkAsReturnedToHand()
     {
         isPlayed = false;
+        isLockedInPlay = false;
         isSelected = false;
         currentState = 0;
         rectTransform.localScale = originalScale;
