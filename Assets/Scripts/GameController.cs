@@ -23,6 +23,9 @@ namespace WildCardStudio
         [Header("Scoring")]
         [SerializeField] private float baseScoreMultiplier = 1f;
 
+        [Header("Starting Hand")]
+        [SerializeField, Min(0)] private int startingHandSize = 10;
+
         private readonly List<Combo> activeCombos = new List<Combo>();
 
         public TurnPhase CurrentPhase => currentPhase;
@@ -32,6 +35,7 @@ namespace WildCardStudio
         public EventDispatcher Events => eventDispatcher;
         public IReadOnlyList<PlayerState> Players => players;
         public IReadOnlyList<Combo> ActiveCombos => activeCombos;
+        public int StartingHandSize => Mathf.Max(0, startingHandSize);
 
         private void Awake()
         {

@@ -1,8 +1,17 @@
 using System.Collections.Generic;
 using UnityEngine;
+using LifeAfter;
+using WildCardStudio;
 
 public class PlayManager : MonoBehaviour
 {
+    private readonly BasicComboValidator comboValidator = new BasicComboValidator();
+
+    private sealed class ValidComboCandidate
+    {
+        public List<int> cardIndices;
+    }
+
     [System.Serializable]
     private class PlayedCardSet
     {
@@ -19,6 +28,10 @@ public class PlayManager : MonoBehaviour
     [SerializeField] private float fanSpread = 7.55f;
     [SerializeField] private float cardSpacing = 100f;
     [SerializeField] private float spaceBetweenCardSets = 250f;
+    [SerializeField] private Vector3 firstRowPositionOffset = Vector3.zero;
+    [SerializeField] private Vector3 nextRowPositionOffset = new Vector3(0f, 160f, 0f);
+    [SerializeField, Min(1)] private int maxCardSetsPerRow = 6;
+    [SerializeField, Min(0f)] private float scaleReductionPerSet = 0.1f;
     [SerializeField] private float verticalSpacing = 100f;
     [SerializeField] private Vector3 cardScale = Vector3.one;
     [SerializeField] private bool updatePlayedCardPositionsContinuously;
@@ -33,6 +46,8 @@ public class PlayManager : MonoBehaviour
 
     public void PlaySelectedCards(HandManager handManager)
     {
+        CardMovement.HideInvalidComboIndicator();
+
         if (handManager == null)
         {
             Debug.LogError("Cannot play selected cards: assign a HandManager.", this);
@@ -64,7 +79,205 @@ public class PlayManager : MonoBehaviour
             }
         }
 
+        if (cardsToPlay.Count == 0)
+        {
+            return;
+        }
+
+        List<GameObject> invalidCards = GetCardsNotInValidCombos(cardsToPlay);
+        if (invalidCards.Count > 0)
+        {
+            Debug.LogError(
+                $"Cannot play cards: {invalidCards.Count} card(s) do not belong to a valid set or straight.",
+                this);
+            ShowInvalidComboIndicators(invalidCards);
+            return;
+        }
+
         AddPlayedCardSet(cardsToPlay);
+    }
+
+    private List<GameObject> GetCardsNotInValidCombos(List<GameObject> cards)
+    {
+        List<GameObject> cardsWithData = new List<GameObject>(cards.Count);
+        List<CardInstance> cardInstances = new List<CardInstance>(cards.Count);
+        List<GameObject> invalidCards = new List<GameObject>();
+        foreach (GameObject card in cards)
+        {
+            CardDisplay cardDisplay = card != null ? card.GetComponent<CardDisplay>() : null;
+            if (cardDisplay == null || cardDisplay.cardData == null)
+            {
+                Debug.LogError("Cannot validate played cards: a card is missing its CardDisplay or card data.", this);
+                if (card != null)
+                {
+                    invalidCards.Add(card);
+                }
+
+                continue;
+            }
+
+            Card definition = cardDisplay.cardData;
+            CardType cardType = definition.cardType != null && definition.cardType.Count > 0
+                ? definition.cardType[0]
+                : CardType.Number;
+            Suit suit = definition.suit != null && definition.suit.Count > 0
+                ? definition.suit[0]
+                : default(Suit);
+
+            cardInstances.Add(new CardInstance
+            {
+                InstanceId = card.GetInstanceID().ToString(),
+                Definition = definition,
+                Rank = definition.cardRank,
+                Suit = suit,
+                Type = cardType
+            });
+            cardsWithData.Add(card);
+        }
+
+        List<ValidComboCandidate> candidates = new List<ValidComboCandidate>();
+        CollectValidComboCandidates(cardInstances, 0, new List<int>(), candidates);
+        candidates.Sort((left, right) => right.cardIndices.Count.CompareTo(left.cardIndices.Count));
+
+        bool[] available = new bool[cardInstances.Count];
+        bool[] bestCoverage = new bool[cardInstances.Count];
+        int bestCoverageCount = -1;
+        FindBestComboCoverage(candidates, available, new bool[cardInstances.Count], 0, 0, bestCoverage, ref bestCoverageCount);
+
+        for (int i = 0; i < bestCoverage.Length; i++)
+        {
+            if (!bestCoverage[i])
+            {
+                invalidCards.Add(cardsWithData[i]);
+            }
+        }
+
+        return invalidCards;
+    }
+
+    private void CollectValidComboCandidates(
+        List<CardInstance> cards,
+        int startIndex,
+        List<int> currentIndices,
+        List<ValidComboCandidate> candidates)
+    {
+        if (currentIndices.Count >= Mathf.Min(comboValidator.MinimumSetCount, comboValidator.MinimumStraightCount))
+        {
+            List<CardInstance> candidateCards = new List<CardInstance>(currentIndices.Count);
+            foreach (int index in currentIndices)
+            {
+                candidateCards.Add(cards[index]);
+            }
+
+            if (comboValidator.CanCreateCombo(candidateCards, ComboType.Set, null).IsValid
+                || comboValidator.CanCreateCombo(candidateCards, ComboType.Straight, null).IsValid)
+            {
+                candidates.Add(new ValidComboCandidate
+                {
+                    cardIndices = new List<int>(currentIndices)
+                });
+            }
+        }
+
+        for (int i = startIndex; i < cards.Count; i++)
+        {
+            currentIndices.Add(i);
+            CollectValidComboCandidates(cards, i + 1, currentIndices, candidates);
+            currentIndices.RemoveAt(currentIndices.Count - 1);
+        }
+    }
+
+    private void FindBestComboCoverage(
+        List<ValidComboCandidate> candidates,
+        bool[] unavailable,
+        bool[] covered,
+        int decidedCount,
+        int coveredCount,
+        bool[] bestCoverage,
+        ref int bestCoverageCount)
+    {
+        if (coveredCount + unavailable.Length - decidedCount <= bestCoverageCount)
+        {
+            return;
+        }
+
+        int firstAvailableIndex = System.Array.FindIndex(unavailable, unavailableCard => !unavailableCard);
+        if (firstAvailableIndex < 0)
+        {
+            bestCoverageCount = coveredCount;
+            System.Array.Copy(covered, bestCoverage, covered.Length);
+            return;
+        }
+
+        foreach (ValidComboCandidate candidate in candidates)
+        {
+            if (!candidate.cardIndices.Contains(firstAvailableIndex))
+            {
+                continue;
+            }
+
+            bool canUseCandidate = true;
+            foreach (int index in candidate.cardIndices)
+            {
+                if (unavailable[index])
+                {
+                    canUseCandidate = false;
+                    break;
+                }
+            }
+
+            if (!canUseCandidate)
+            {
+                continue;
+            }
+
+            foreach (int index in candidate.cardIndices)
+            {
+                unavailable[index] = true;
+                covered[index] = true;
+            }
+
+            FindBestComboCoverage(
+                candidates,
+                unavailable,
+                covered,
+                decidedCount + candidate.cardIndices.Count,
+                coveredCount + candidate.cardIndices.Count,
+                bestCoverage,
+                ref bestCoverageCount);
+
+            foreach (int index in candidate.cardIndices)
+            {
+                unavailable[index] = false;
+                covered[index] = false;
+            }
+        }
+
+        unavailable[firstAvailableIndex] = true;
+        FindBestComboCoverage(
+            candidates,
+            unavailable,
+            covered,
+            decidedCount + 1,
+            coveredCount,
+            bestCoverage,
+            ref bestCoverageCount);
+        unavailable[firstAvailableIndex] = false;
+    }
+
+    private void ShowInvalidComboIndicators(List<GameObject> cards)
+    {
+        foreach (GameObject card in cards)
+        {
+            CardMovement movement = card != null ? card.GetComponent<CardMovement>() : null;
+            if (movement == null)
+            {
+                Debug.LogError("Cannot show invalid combo feedback: a card is missing its CardMovement.", this);
+                continue;
+            }
+
+            movement.ShowInvalidComboIndicator();
+        }
     }
 
     public bool AddPlayedCard(GameObject card)
@@ -133,11 +346,6 @@ public class PlayManager : MonoBehaviour
             return;
         }
 
-        foreach (GameObject card in cardsInPlay)
-        {
-            card.transform.localScale = cardScale;
-        }
-
         playedCardSets.RemoveAll(set => set == null);
         foreach (PlayedCardSet set in playedCardSets)
         {
@@ -173,54 +381,59 @@ public class PlayManager : MonoBehaviour
             playedCardSets.Add(ungroupedCards);
         }
 
+        playedCardSets.RemoveAll(set => set.cards.Count == 0);
+        float scaleMultiplier = 1f / (1f + Mathf.Max(0f, scaleReductionPerSet) * (playedCardSets.Count - 1));
+        Vector3 currentCardScale = cardScale * scaleMultiplier;
+        int setsPerRow = Mathf.Max(1, maxCardSetsPerRow);
+        foreach (GameObject card in cardsInPlay)
+        {
+            card.transform.localScale = currentCardScale;
+        }
+
         if (playedCardsParent == null || playPositionReference == null)
         {
             return;
         }
 
         Vector3 referencePosition = playedCardsParent.InverseTransformPoint(playPositionReference.transform.position);
-        playedCardSets.RemoveAll(set => set.cards.Count == 0);
-        float totalWidth = 0f;
-        foreach (PlayedCardSet set in playedCardSets)
+        float scaledCardSpacing = cardSpacing * scaleMultiplier;
+        float scaledSetSpacing = spaceBetweenCardSets * scaleMultiplier;
+        for (int rowStart = 0; rowStart < playedCardSets.Count; rowStart += setsPerRow)
         {
-            if (set.cards.Count == 0)
+            int rowEnd = Mathf.Min(rowStart + setsPerRow, playedCardSets.Count);
+            float totalWidth = 0f;
+            for (int setIndex = rowStart; setIndex < rowEnd; setIndex++)
             {
-                continue;
+                totalWidth += scaledCardSpacing * (playedCardSets[setIndex].cards.Count - 1);
             }
 
-            totalWidth += cardSpacing * (set.cards.Count - 1);
-        }
-
-        totalWidth += spaceBetweenCardSets * Mathf.Max(0, playedCardSets.Count - 1);
-        float nextSetStart = -totalWidth / 2f;
-        int nonEmptySetIndex = 0;
-        foreach (PlayedCardSet set in playedCardSets)
-        {
-            int cardCount = set.cards.Count;
-            if (cardCount == 0)
+            totalWidth += scaledSetSpacing * Mathf.Max(0, rowEnd - rowStart - 1);
+            float nextSetStart = -totalWidth / 2f;
+            int rowIndex = rowStart / setsPerRow;
+            Vector3 rowPositionOffset = (firstRowPositionOffset + nextRowPositionOffset * rowIndex) * scaleMultiplier;
+            for (int setIndex = rowStart; setIndex < rowEnd; setIndex++)
             {
-                continue;
-            }
+                PlayedCardSet set = playedCardSets[setIndex];
+                int cardCount = set.cards.Count;
+                float setWidth = scaledCardSpacing * (cardCount - 1);
+                float setCenter = nextSetStart + setWidth / 2f;
+                for (int i = 0; i < cardCount; i++)
+                {
+                    float centeredIndex = i - (cardCount - 1) / 2f;
+                    float normalizedPosition = cardCount > 1 ? 2f * i / (cardCount - 1) - 1f : 0f;
+                    float verticalOffset = verticalSpacing * scaleMultiplier * (1f - normalizedPosition * normalizedPosition);
+                    GameObject card = set.cards[i];
+                    card.transform.localRotation = Quaternion.Euler(0f, 0f, fanSpread * centeredIndex);
+                    card.transform.localPosition = referencePosition
+                        + rowPositionOffset
+                        + new Vector3(setCenter + scaledCardSpacing * centeredIndex, verticalOffset, 0f);
+                }
 
-            float setWidth = cardSpacing * (cardCount - 1);
-            float setCenter = nextSetStart + setWidth / 2f;
-            for (int i = 0; i < cardCount; i++)
-            {
-                float centeredIndex = i - (cardCount - 1) / 2f;
-                float normalizedPosition = cardCount > 1 ? 2f * i / (cardCount - 1) - 1f : 0f;
-                float verticalOffset = verticalSpacing * (1f - normalizedPosition * normalizedPosition);
-                GameObject card = set.cards[i];
-                card.transform.localScale = cardScale;
-                card.transform.localRotation = Quaternion.Euler(0f, 0f, fanSpread * centeredIndex);
-                card.transform.localPosition = referencePosition
-                    + new Vector3(setCenter + cardSpacing * centeredIndex, verticalOffset, 0f);
-            }
-
-            nextSetStart += setWidth;
-            nonEmptySetIndex++;
-            if (nonEmptySetIndex < playedCardSets.Count)
-            {
-                nextSetStart += spaceBetweenCardSets;
+                nextSetStart += setWidth;
+                if (setIndex + 1 < rowEnd)
+                {
+                    nextSetStart += scaledSetSpacing;
+                }
             }
         }
     }

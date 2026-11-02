@@ -245,8 +245,13 @@ namespace WildCardStudio
                     return ComboValidationResult.Failure(ComboValidationReason.InsufficientCards, "Sets require at least two cards.");
                 }
 
-                var rank = cards[0].Rank;
-                if (cards.Any(card => card == null || card.Rank != rank))
+                if (cards.Any(card => card == null))
+                {
+                    return ComboValidationResult.Failure(ComboValidationReason.InvalidRank, "A set cannot contain a missing card.");
+                }
+
+                var firstCard = cards[0];
+                if (cards.Skip(1).Any(card => !HasSamePrintedRank(firstCard, card)))
                 {
                     return ComboValidationResult.Failure(ComboValidationReason.InvalidRank, "A set must contain cards with the same printed rank.");
                 }
@@ -275,6 +280,18 @@ namespace WildCardStudio
             }
 
             return ComboValidationResult.Failure(ComboValidationReason.InvalidComboType, "Unsupported combo type.");
+        }
+
+        private static bool HasSamePrintedRank(CardInstance firstCard, CardInstance secondCard)
+        {
+            if (firstCard.IsSpecialCard || secondCard.IsSpecialCard)
+            {
+                return firstCard.IsSpecialCard
+                    && secondCard.IsSpecialCard
+                    && firstCard.Type == secondCard.Type;
+            }
+
+            return firstCard.Rank == secondCard.Rank;
         }
 
         public ComboValidationResult CanAddCard(Combo combo, CardInstance card, PlayerState player, GameController controller = null)

@@ -7,6 +7,11 @@ using System;
 
 public class HandManager : MonoBehaviour
 {
+    private readonly HashSet<CardMovement> movementsDisabledWhileHandDown = new HashSet<CardMovement>();
+    private readonly Dictionary<GameObject, bool> scoreCardActiveStates = new Dictionary<GameObject, bool>();
+    private ScoreManager scoreManager;
+    private bool handIsDown;
+
     public DeckManager deckManager; //Reference to the DeckManager script
     [SerializeField] private PlayManager playManager;
     public GameObject cardPrefab; //Assign card prefab in the inspector
@@ -14,12 +19,23 @@ public class HandManager : MonoBehaviour
     public float fanSpread = 7.55f; //Angle between cards
     public float cardSpacing = 100f; //Spacing between cards
     public float verticalSpacing = 100f; //Vertical spacing between cards
+    [Header("Hand Positions")]
+    [SerializeField] private Vector3 handPositionUp = new Vector3(0f, 100f, 0f);
+    [SerializeField] private Vector3 handPositionDown = Vector3.zero;
+    [SerializeField, Min(0f)] private float handPositionMoveSpeed = 8f;
     [SerializeField] private bool updateHandCardPositionsContinuously;
     public List<GameObject> cardsInHand = new List<GameObject>(); //Hold a list of card objects in hand
     
+    private Vector3 targetHandPosition;
+    public bool IsHandDown => handIsDown;
+
     void Start()
     {
-        
+        scoreManager = FindFirstObjectByType<ScoreManager>();
+        if (handTransform != null)
+        {
+            targetHandPosition = handTransform.localPosition;
+        }
     }
 
     public void AddCardToHand(Card cardData)
@@ -27,7 +43,12 @@ public class HandManager : MonoBehaviour
         //Creating the cards here
         GameObject newCard = Instantiate(cardPrefab, handTransform.position, Quaternion.identity, handTransform);
         cardsInHand.Add(newCard);
-        newCard.GetComponent<CardMovement>().SetHandManager(this);
+        CardMovement movement = newCard.GetComponent<CardMovement>();
+        movement.SetHandManager(this);
+        if (handIsDown)
+        {
+            DisableHandCardMovement(movement);
+        }
         
         newCard.GetComponent<CardDisplay>().cardData = cardData; //Set the card data to the new card
 
@@ -68,6 +89,10 @@ public class HandManager : MonoBehaviour
         {
             movement.SetHandManager(this);
             movement.MarkAsReturnedToHand();
+            if (handIsDown)
+            {
+                DisableHandCardMovement(movement);
+            }
         }
 
         UpdateCardPositions();
@@ -82,7 +107,18 @@ public class HandManager : MonoBehaviour
 
     void Update()
     {
-        if (Input.GetKeyDown(KeyCode.Space))
+        UpdateHandPosition();
+
+        if (Input.GetKeyDown(KeyCode.UpArrow))
+        {
+            SetHandPosition(handPositionUp, false);
+        }
+        else if (Input.GetKeyDown(KeyCode.DownArrow))
+        {
+            SetHandPosition(handPositionDown, true);
+        }
+
+        if (!handIsDown && Input.GetKeyDown(KeyCode.Space))
         {
             if (playManager == null)
             {
@@ -98,6 +134,121 @@ public class HandManager : MonoBehaviour
         {
             UpdateCardPositions();
         }
+    }
+
+    private void SetHandPosition(Vector3 position, bool moveHandDown)
+    {
+        if (handTransform == null)
+        {
+            Debug.LogError("Cannot move the hand: assign a Hand Transform in the HandManager.", this);
+            return;
+        }
+
+        targetHandPosition = position;
+        if (handIsDown == moveHandDown)
+        {
+            return;
+        }
+
+        handIsDown = moveHandDown;
+        if (handIsDown)
+        {
+            SetHandCardMovementEnabled(false);
+            HideScoreCards();
+        }
+        else
+        {
+            SetHandCardMovementEnabled(true);
+            RestoreScoreCards();
+        }
+    }
+
+    private void UpdateHandPosition()
+    {
+        if (handTransform == null)
+        {
+            return;
+        }
+
+        if (handPositionMoveSpeed <= 0f)
+        {
+            handTransform.localPosition = targetHandPosition;
+            return;
+        }
+
+        handTransform.localPosition = Vector3.Lerp(
+            handTransform.localPosition,
+            targetHandPosition,
+            1f - Mathf.Exp(-handPositionMoveSpeed * Time.deltaTime));
+    }
+
+    private void SetHandCardMovementEnabled(bool enabled)
+    {
+        if (enabled)
+        {
+            foreach (CardMovement movement in movementsDisabledWhileHandDown)
+            {
+                if (movement != null)
+                {
+                    movement.enabled = true;
+                }
+            }
+
+            movementsDisabledWhileHandDown.Clear();
+            return;
+        }
+
+        foreach (GameObject card in cardsInHand)
+        {
+            CardMovement movement = card != null ? card.GetComponent<CardMovement>() : null;
+            DisableHandCardMovement(movement);
+        }
+    }
+
+    private void DisableHandCardMovement(CardMovement movement)
+    {
+        if (movement != null && movement.enabled && movementsDisabledWhileHandDown.Add(movement))
+        {
+            movement.enabled = false;
+        }
+    }
+
+    private void HideScoreCards()
+    {
+        if (scoreManager == null)
+        {
+            scoreManager = FindFirstObjectByType<ScoreManager>();
+        }
+
+        if (scoreManager == null)
+        {
+            Debug.LogError("Cannot hide score cards: no ScoreManager exists in the scene.", this);
+            return;
+        }
+
+        foreach (GameObject card in scoreManager.cardsInPlay)
+        {
+            if (card == null || scoreCardActiveStates.ContainsKey(card))
+            {
+                continue;
+            }
+
+            scoreCardActiveStates.Add(card, card.activeSelf);
+            card.SetActive(false);
+        }
+    }
+
+    private void RestoreScoreCards()
+    {
+        foreach (KeyValuePair<GameObject, bool> cardState in scoreCardActiveStates)
+        {
+            if (cardState.Key != null)
+            {
+                cardState.Key.SetActive(cardState.Value);
+            }
+        }
+
+        scoreCardActiveStates.Clear();
     }
 
     private void UpdateCardPositions()

@@ -7,6 +7,8 @@ using WildCardStudio;
 public class CardMovement : MonoBehaviour, IDragHandler, IPointerDownHandler, IPointerEnterHandler, IPointerExitHandler, IPointerClickHandler
 {
     private static readonly List<CardMovement> cardsInPlay = new List<CardMovement>();
+    private static readonly HashSet<CardMovement> cardsWithActiveInvalidComboIndicators = new HashSet<CardMovement>();
+    private static readonly HashSet<CardMovement> cardsBeingDragged = new HashSet<CardMovement>();
 
     private RectTransform rectTransform;
     private Canvas canvas;
@@ -26,10 +28,12 @@ public class CardMovement : MonoBehaviour, IDragHandler, IPointerDownHandler, IP
     private bool isDraggingPlayedCardToHand;
 
     public bool IsSelected => isSelected;
+    public static bool IsAnyCardBeingDragged => cardsBeingDragged.Count > 0;
 
     [SerializeField] private float selectScale = 1.2f; // Scale when selected
     [SerializeField] private GameObject glowEffect;
     [SerializeField] private GameObject playArrow;
+    [SerializeField] private GameObject invalidComboIndicator;
     [SerializeField] private float lerpFactor = 0.1f; // Lerp factor for smooth movement
 
     void Awake()
@@ -45,6 +49,48 @@ public class CardMovement : MonoBehaviour, IDragHandler, IPointerDownHandler, IP
         originalScale = rectTransform.localScale;
         originalRotation = rectTransform.localRotation;
         originalPosition = rectTransform.localPosition;
+        if (invalidComboIndicator != null)
+        {
+            invalidComboIndicator.SetActive(false);
+        }
+    }
+
+    public bool ShowInvalidComboIndicator()
+    {
+        if (invalidComboIndicator == null)
+        {
+            Debug.LogError("Cannot show invalid combo feedback: assign an Invalid Combo Indicator in the CardMovement.", this);
+            return false;
+        }
+
+        if (cardsWithActiveInvalidComboIndicators.Add(this))
+        {
+            invalidComboIndicator.SetActive(true);
+        }
+
+        return true;
+    }
+
+    public void HideOwnInvalidComboIndicator()
+    {
+        cardsWithActiveInvalidComboIndicators.Remove(this);
+        if (invalidComboIndicator != null)
+        {
+            invalidComboIndicator.SetActive(false);
+        }
+    }
+
+    public static void HideInvalidComboIndicator()
+    {
+        foreach (CardMovement card in cardsWithActiveInvalidComboIndicators)
+        {
+            if (card != null && card.invalidComboIndicator != null)
+            {
+                card.invalidComboIndicator.SetActive(false);
+            }
+        }
+
+        cardsWithActiveInvalidComboIndicators.Clear();
     }
 
     void Update()
@@ -79,6 +125,7 @@ public class CardMovement : MonoBehaviour, IDragHandler, IPointerDownHandler, IP
 
     private void TransitionToState0()
     {
+        cardsBeingDragged.Remove(this);
         currentState = isSelected ? 1 : 0;
         rectTransform.localScale = originalScale; //Reset Scale
         rectTransform.localRotation = originalRotation; //Reset Rotation
@@ -133,6 +180,7 @@ public class CardMovement : MonoBehaviour, IDragHandler, IPointerDownHandler, IP
             wasDragged = false;
             isDraggingPlayedCardToHand = false;
             currentState = isPlayed ? 4 : 2;
+            cardsBeingDragged.Add(this);
             RectTransformUtility.ScreenPointToLocalPointInRectangle(dragPlane, eventData.position, eventData.pressEventCamera, out originalLocalPointerPosition);
             originalPanelLocalPosition = rectTransform.localPosition;
         }
@@ -157,6 +205,8 @@ public class CardMovement : MonoBehaviour, IDragHandler, IPointerDownHandler, IP
     {
         if (!isLockedInPlay && (currentState == 2 || currentState == 3 || currentState == 4) && dragPlane != null)
         {
+            HideInvalidComboIndicator();
+
             wasDragged = true;
             Vector2 localPointerPosition;
             if (RectTransformUtility.ScreenPointToLocalPointInRectangle(dragPlane, eventData.position, eventData.pressEventCamera, out localPointerPosition))
@@ -297,6 +347,7 @@ public class CardMovement : MonoBehaviour, IDragHandler, IPointerDownHandler, IP
 
     public void MarkAsPlayed(bool lockInPlay = false)
     {
+        cardsBeingDragged.Remove(this);
         RemoveFromPlayArea();
         isPlayed = true;
         isLockedInPlay = lockInPlay;
@@ -321,6 +372,7 @@ public class CardMovement : MonoBehaviour, IDragHandler, IPointerDownHandler, IP
 
     public void MarkAsReturnedToHand()
     {
+        cardsBeingDragged.Remove(this);
         isPlayed = false;
         isLockedInPlay = false;
         isSelected = false;
@@ -344,6 +396,13 @@ public class CardMovement : MonoBehaviour, IDragHandler, IPointerDownHandler, IP
 
     void OnDestroy()
     {
+        cardsBeingDragged.Remove(this);
+        HideOwnInvalidComboIndicator();
         RemoveFromPlayArea();
+    }
+
+    private void OnDisable()
+    {
+        cardsBeingDragged.Remove(this);
     }
 }

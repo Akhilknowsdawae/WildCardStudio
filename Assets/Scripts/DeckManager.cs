@@ -19,9 +19,22 @@ public class DeckManager : MonoBehaviour
         //add the loaded cards to the allCards list
         allCards.AddRange(cards);
 
-        // Find the HandManager in the scene.
+        // Find the managers that control the starting hand.
         HandManager hand = FindFirstObjectByType<HandManager>();
-        for (int i = 0; i < 9; i++) //Draw 10 cards to start
+        GameController gameController = FindFirstObjectByType<GameController>();
+        if (hand == null)
+        {
+            Debug.LogError("Cannot deal starting cards: no HandManager exists in the scene.", this);
+            return;
+        }
+
+        if (gameController == null)
+        {
+            Debug.LogError("Cannot deal starting cards: no GameController exists in the scene.", this);
+            return;
+        }
+
+        for (int i = 0; i < gameController.StartingHandSize; i++)
         {
             DrawCard(hand);
         }
