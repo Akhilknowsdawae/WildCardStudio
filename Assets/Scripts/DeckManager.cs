@@ -10,6 +10,7 @@ public class DeckManager : MonoBehaviour
     public List<Card> allCards = new List<Card>(); //List of cards in the deck
 
     private int currentIndex = 0; //Index to keep track of the current card
+    private GameController gameController;
 
     void Start()
     {
@@ -21,7 +22,7 @@ public class DeckManager : MonoBehaviour
 
         // Find the managers that control the starting hand.
         HandManager hand = FindFirstObjectByType<HandManager>();
-        GameController gameController = FindFirstObjectByType<GameController>();
+        gameController = FindFirstObjectByType<GameController>();
         if (hand == null)
         {
             Debug.LogError("Cannot deal starting cards: no HandManager exists in the scene.", this);
@@ -40,16 +41,40 @@ public class DeckManager : MonoBehaviour
         }
     }
 
-    public void DrawCard(HandManager handManager)
+    public bool DrawCard(HandManager handManager)
     {
+        if (gameController == null)
+        {
+            gameController = FindFirstObjectByType<GameController>();
+        }
+
+        if (gameController == null)
+        {
+            Debug.LogError("Cannot draw a card: no GameController exists in the scene.", this);
+            return false;
+        }
+
+        if (gameController.CurrentPhase != TurnPhase.Draw)
+        {
+            Debug.LogWarning($"Cannot draw a card during the {gameController.CurrentPhase} phase.", this);
+            return false;
+        }
+
+        if (handManager == null)
+        {
+            Debug.LogError("Cannot draw a card: no HandManager is available.", this);
+            return false;
+        }
+
         if (allCards.Count == 0)
         {
             Debug.LogWarning("Deck is empty!");
-            return;
+            return false;
         }
 
         Card nextCard = allCards[currentIndex]; //Get the next card from the deck'
         handManager.AddCardToHand(nextCard); //Add the card to the hand
         currentIndex = (currentIndex + 1) % allCards.Count; //Move to the next card, loop back to start if at the end
+        return true;
     }
 }

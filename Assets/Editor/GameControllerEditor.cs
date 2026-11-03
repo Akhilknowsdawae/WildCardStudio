@@ -13,16 +13,19 @@ public class ScoreManagerEditor : Editor
             "playedCardsParent",
             "playPositionReference",
             "playPosition",
+            "playAreaPadding",
             "fanSpread",
             "cardSpacing",
             "verticalSpacing",
-            "updatePlayedCardPositionsContinuously");
+            "updatePlayedCardPositionsContinuously",
+            "scoreCardsAlphaWhenHandDown");
 
         EditorGUILayout.Space();
         EditorGUILayout.LabelField("Card Layout", EditorStyles.boldLabel);
         EditorGUILayout.PropertyField(serializedObject.FindProperty("playedCardsParent"));
         SerializedProperty playPositionReference = serializedObject.FindProperty("playPositionReference");
         SerializedProperty playPosition = serializedObject.FindProperty("playPosition");
+        SerializedProperty playAreaPadding = serializedObject.FindProperty("playAreaPadding");
         if (playPositionReference != null)
         {
             EditorGUILayout.PropertyField(playPositionReference);
@@ -36,10 +39,15 @@ public class ScoreManagerEditor : Editor
                 EditorGUILayout.PropertyField(playPosition);
             }
         }
+        if (playAreaPadding != null)
+        {
+            EditorGUILayout.PropertyField(playAreaPadding);
+        }
         EditorGUILayout.PropertyField(serializedObject.FindProperty("fanSpread"));
         EditorGUILayout.PropertyField(serializedObject.FindProperty("cardSpacing"));
         EditorGUILayout.PropertyField(serializedObject.FindProperty("verticalSpacing"));
         EditorGUILayout.PropertyField(serializedObject.FindProperty("updatePlayedCardPositionsContinuously"));
+        EditorGUILayout.PropertyField(serializedObject.FindProperty("scoreCardsAlphaWhenHandDown"));
 
         serializedObject.ApplyModifiedProperties();
     }

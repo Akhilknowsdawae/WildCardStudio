@@ -9,12 +9,16 @@ public class ScoreManager : MonoBehaviour
     [SerializeField] private Transform playedCardsParent;
     [SerializeField] private GameObject playPositionReference;
     [SerializeField] private Vector3 playPosition = new Vector3(-600f, 400f, 0f);
+    [SerializeField, Min(0f), Tooltip("Expands the play area downward from the play position reference, in UI units.")]
+    private float playAreaPadding;
     [SerializeField] private float fanSpread = 7.55f;
     [SerializeField] private float cardSpacing = 100f;
     [SerializeField] private float verticalSpacing = 100f;
     [SerializeField] private bool updatePlayedCardPositionsContinuously;
+    [SerializeField, Range(0f, 1f)] private float scoreCardsAlphaWhenHandDown = 0.25f;
 
     public float CardSpacing => cardSpacing;
+    public float ScoreCardsAlphaWhenHandDown => scoreCardsAlphaWhenHandDown;
 
     private void Update()
     {
@@ -33,6 +37,12 @@ public class ScoreManager : MonoBehaviour
 
         Vector3 referencePosition = playPositionReference.transform.position;
         return relativeTo != null ? relativeTo.InverseTransformPoint(referencePosition) : referencePosition;
+    }
+
+    public bool IsPointerInPlayArea(Vector2 localPosition, Transform relativeTo)
+    {
+        float playAreaBoundary = GetPlayPosition(relativeTo).y - Mathf.Max(0f, playAreaPadding);
+        return localPosition.y > playAreaBoundary;
     }
 
     public bool AddPlayedCard(GameObject card)

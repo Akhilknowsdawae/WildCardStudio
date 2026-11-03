@@ -15,6 +15,7 @@ public class CardMovement : MonoBehaviour, IDragHandler, IPointerDownHandler, IP
     private RectTransform dragPlane;
     private HandManager handManager;
     private ScoreManager scoreManager;
+    private GameController gameController;
     private Vector2 originalLocalPointerPosition;
     private Vector3 originalPanelLocalPosition;
     private Vector3 originalScale;
@@ -46,6 +47,7 @@ public class CardMovement : MonoBehaviour, IDragHandler, IPointerDownHandler, IP
             dragPlane = canvas.GetComponent<RectTransform>();
         }
         scoreManager = FindFirstObjectByType<ScoreManager>();
+        gameController = FindFirstObjectByType<GameController>();
         originalScale = rectTransform.localScale;
         originalRotation = rectTransform.localRotation;
         originalPosition = rectTransform.localPosition;
@@ -166,6 +168,17 @@ public class CardMovement : MonoBehaviour, IDragHandler, IPointerDownHandler, IP
     {
         if (currentState == 1 && !isLockedInPlay)
         {
+            wasDragged = false;
+            if (gameController == null)
+            {
+                gameController = FindFirstObjectByType<GameController>();
+            }
+
+            if (gameController != null && gameController.CurrentPhase == TurnPhase.Draw)
+            {
+                return;
+            }
+
             dragPlane = rectTransform.parent as RectTransform;
             if (dragPlane == null && canvas != null)
             {
@@ -177,9 +190,8 @@ public class CardMovement : MonoBehaviour, IDragHandler, IPointerDownHandler, IP
                 return;
             }
 
-            wasDragged = false;
             isDraggingPlayedCardToHand = false;
-            currentState = isPlayed ? 4 : 2;
+            currentState = isPlayed || IsInScoringList() ? 4 : 2;
             cardsBeingDragged.Add(this);
             RectTransformUtility.ScreenPointToLocalPointInRectangle(dragPlane, eventData.position, eventData.pressEventCamera, out originalLocalPointerPosition);
             originalPanelLocalPosition = rectTransform.localPosition;
@@ -188,8 +200,45 @@ public class CardMovement : MonoBehaviour, IDragHandler, IPointerDownHandler, IP
 
     public void OnPointerClick(PointerEventData eventData)
     {
-        if (isPlayed || isLockedInPlay || wasDragged)
+        if (isLockedInPlay || wasDragged)
         {
+            return;
+        }
+
+        if (gameController == null)
+        {
+            gameController = FindFirstObjectByType<GameController>();
+        }
+
+        if (isPlayed || IsInScoringList())
+        {
+            if (gameController == null || gameController.CurrentPhase != TurnPhase.Discard)
+            {
+                return;
+            }
+
+            Debug.Log($"Keeping {name} in the scoring list for discard; drag it back to hand to keep it.", this);
+            return;
+        }
+
+        if (gameController != null && gameController.CurrentPhase == TurnPhase.Play)
+        {
+            if (scoreManager == null)
+            {
+                scoreManager = FindFirstObjectByType<ScoreManager>();
+            }
+
+            if (scoreManager == null)
+            {
+                Debug.LogError("Cannot add card to the scoring area: no ScoreManager exists in the scene.", this);
+                return;
+            }
+
+            if (scoreManager.AddPlayedCard(gameObject))
+            {
+                MarkAsPlayed();
+            }
+
             return;
         }
 
@@ -203,6 +252,19 @@ public class CardMovement : MonoBehaviour, IDragHandler, IPointerDownHandler, IP
 
     public void OnDrag(PointerEventData eventData)
     {
+        if (gameController == null)
+        {
+            gameController = FindFirstObjectByType<GameController>();
+        }
+
+        if (gameController != null && gameController.CurrentPhase == TurnPhase.Draw
+            && (currentState == 2 || currentState == 3 || currentState == 4))
+        {
+            RemoveFromPlayArea();
+            TransitionToState0();
+            return;
+        }
+
         if (!isLockedInPlay && (currentState == 2 || currentState == 3 || currentState == 4) && dragPlane != null)
         {
             HideInvalidComboIndicator();
@@ -216,20 +278,20 @@ public class CardMovement : MonoBehaviour, IDragHandler, IPointerDownHandler, IP
                     Vector3 targetPosition = originalPanelLocalPosition + (Vector3)(localPointerPosition - originalLocalPointerPosition);
                     rectTransform.localPosition = Vector3.Lerp(rectTransform.localPosition, targetPosition, lerpFactor);
                     isDraggingPlayedCardToHand = scoreManager != null
-                        && localPointerPosition.y < scoreManager.GetPlayPosition(dragPlane).y;
+                        && !scoreManager.IsPointerInPlayArea(localPointerPosition, dragPlane);
                 }
                 else if (currentState == 2)
                 {
                     Vector3 targetPosition = originalPanelLocalPosition + (Vector3)(localPointerPosition - originalLocalPointerPosition);
                     rectTransform.localPosition = Vector3.Lerp(rectTransform.localPosition, targetPosition, lerpFactor);
-                    if (scoreManager != null && localPointerPosition.y > scoreManager.GetPlayPosition(dragPlane).y)
+                    if (scoreManager != null && scoreManager.IsPointerInPlayArea(localPointerPosition, dragPlane))
                     {
                         AddToPlayArea();
                         currentState = 3;
                         playArrow.SetActive(true);
                     }
                 }
-                else if (scoreManager != null && localPointerPosition.y < scoreManager.GetPlayPosition(dragPlane).y)
+                else if (scoreManager != null && !scoreManager.IsPointerInPlayArea(localPointerPosition, dragPlane))
                 {
                     RemoveFromPlayArea();
                     currentState = 2;
@@ -299,6 +361,39 @@ public class CardMovement : MonoBehaviour, IDragHandler, IPointerDownHandler, IP
 
     private void CommitPlayState()
     {
+        if (gameController == null)
+        {
+            gameController = FindFirstObjectByType<GameController>();
+        }
+
+        if (gameController != null && gameController.CurrentPhase == TurnPhase.Discard
+            && (scoreManager == null || scoreManager.cardsInPlay == null
+                || !scoreManager.cardsInPlay.Contains(gameObject)))
+        {
+            if (scoreManager == null || scoreManager.cardsInPlay == null)
+            {
+                Debug.LogError("Cannot add a discard candidate: no ScoreManager scoring list is available.", this);
+                ReturnRejectedDiscardCandidateToHand();
+                return;
+            }
+
+            DiscardManager discardManager = FindFirstObjectByType<DiscardManager>();
+            if (discardManager == null)
+            {
+                Debug.LogError("Cannot add a discard candidate: no DiscardManager exists in the scene.", this);
+                ReturnRejectedDiscardCandidateToHand();
+                return;
+            }
+
+            int scoringCardCount = scoreManager.cardsInPlay.FindAll(card => card != null).Count;
+            if (scoringCardCount >= discardManager.CardsToDiscard)
+            {
+                Debug.Log($"Discard selection is full ({discardManager.CardsToDiscard} card(s)); returning {name} to the hand.", this);
+                ReturnRejectedDiscardCandidateToHand();
+                return;
+            }
+        }
+
         if (scoreManager != null && scoreManager.AddPlayedCard(gameObject))
         {
             MarkAsPlayed();
@@ -312,6 +407,34 @@ public class CardMovement : MonoBehaviour, IDragHandler, IPointerDownHandler, IP
 
         RemoveFromPlayArea();
         TransitionToState0();
+    }
+
+    private void ReturnRejectedDiscardCandidateToHand()
+    {
+        RemoveFromPlayArea();
+        if (handManager == null)
+        {
+            Debug.LogError("Cannot return the rejected discard candidate: no HandManager is assigned.", this);
+            TransitionToState0();
+            return;
+        }
+
+        if (!handManager.ReturnCardToHand(gameObject))
+        {
+            Debug.LogError("Failed to return the rejected discard candidate to the hand.", this);
+            TransitionToState0();
+        }
+    }
+
+    private bool IsInScoringList()
+    {
+        if (scoreManager == null)
+        {
+            scoreManager = FindFirstObjectByType<ScoreManager>();
+        }
+
+        return scoreManager != null && scoreManager.cardsInPlay != null
+            && scoreManager.cardsInPlay.Contains(gameObject);
     }
 
     private void CommitReturnToHand()

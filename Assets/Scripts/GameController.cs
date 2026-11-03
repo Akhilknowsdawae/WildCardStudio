@@ -15,6 +15,7 @@ namespace WildCardStudio
         [SerializeField] private int activePlayerIndex;
         [SerializeField] private int currentTurnNumber = 1;
         [SerializeField] private bool matchEnded;
+        [SerializeField] private bool enterAdvancesPhase = true;
 
         [Header("Systems")]
         private IComboValidator comboValidator;
@@ -32,6 +33,7 @@ namespace WildCardStudio
         public int ActivePlayerIndex => activePlayerIndex;
         public PlayerState ActivePlayer => players != null && players.Count > 0 ? players[activePlayerIndex] : null;
         public bool MatchEnded => matchEnded;
+        public bool EnterAdvancesPhaseEnabled => enterAdvancesPhase;
         public EventDispatcher Events => eventDispatcher;
         public IReadOnlyList<PlayerState> Players => players;
         public IReadOnlyList<Combo> ActiveCombos => activeCombos;
@@ -47,6 +49,47 @@ namespace WildCardStudio
             if (comboValidator == null)
             {
                 comboValidator = new BasicComboValidator();
+            }
+        }
+
+        private void Update()
+        {
+            if (currentPhase == TurnPhase.Discard && Input.GetKeyDown(KeyCode.Space))
+            {
+                DiscardManager discardManager = FindFirstObjectByType<DiscardManager>();
+                ScoreManager scoreManager = FindFirstObjectByType<ScoreManager>();
+                if (discardManager == null)
+                {
+                    Debug.LogError("Cannot discard cards: no DiscardManager exists in the scene.", this);
+                }
+                else if (discardManager.DiscardSelectedCards(scoreManager))
+                {
+                    AdvancePhase();
+                }
+
+                return;
+            }
+
+            if (enterAdvancesPhase
+                && (Input.GetKeyDown(KeyCode.Return) || Input.GetKeyDown(KeyCode.KeypadEnter)))
+            {
+                if (currentPhase == TurnPhase.Discard)
+                {
+                    DiscardManager discardManager = FindFirstObjectByType<DiscardManager>();
+                    ScoreManager scoreManager = FindFirstObjectByType<ScoreManager>();
+                    if (discardManager == null)
+                    {
+                        Debug.LogError("Cannot advance from the discard phase: no DiscardManager exists in the scene.", this);
+                    }
+                    else if (discardManager.DiscardSelectedCards(scoreManager))
+                    {
+                        AdvancePhase();
+                    }
+
+                    return;
+                }
+
+                AdvancePhase();
             }
         }
 
@@ -118,6 +161,28 @@ namespace WildCardStudio
             }
 
             eventDispatcher.Publish(new PhaseChangedEvent(currentPhase, ActivePlayer, currentTurnNumber));
+        }
+
+        public bool EnterDiscardPhase()
+        {
+            if (matchEnded)
+            {
+                return false;
+            }
+
+            if (currentPhase == TurnPhase.Discard)
+            {
+                return true;
+            }
+
+            if (currentPhase != TurnPhase.Draw && currentPhase != TurnPhase.Play)
+            {
+                return false;
+            }
+
+            currentPhase = TurnPhase.Discard;
+            eventDispatcher.Publish(new PhaseChangedEvent(currentPhase, ActivePlayer, currentTurnNumber));
+            return true;
         }
 
         public bool DrawCardFromDeck(PlayerState player, bool fromDiscard)

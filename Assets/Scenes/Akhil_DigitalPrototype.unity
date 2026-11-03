@@ -265,6 +265,7 @@ MonoBehaviour:
   activePlayerIndex: 0
   currentTurnNumber: 1
   matchEnded: 0
+  enterAdvancesPhase: 1
   baseScoreMultiplier: 1
   startingHandSize: 10
 --- !u!4 &244256271
@@ -472,6 +473,7 @@ MonoBehaviour:
   deckManager: {fileID: 614004757}
   handManager: {fileID: 1013871479}
   scoreManager: {fileID: 718370555}
+  gameController: {fileID: 0}
   hoverHeight: 0.2
   hoverMoveSpeed: 10
 --- !u!1 &410087039
@@ -1029,10 +1031,12 @@ MonoBehaviour:
   playedCardsParent: {fileID: 1928475031}
   playPositionReference: {fileID: 1928475030}
   playPosition: {x: -600, y: 400, z: 0}
+  playAreaPadding: 170
   fanSpread: 1
   cardSpacing: 100
   verticalSpacing: 0
   updatePlayedCardPositionsContinuously: 0
+  scoreCardsAlphaWhenHandDown: 0.06
 --- !u!1 &718851026
 GameObject:
   m_ObjectHideFlags: 0
@@ -1296,13 +1300,13 @@ Transform:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 980045957}
   serializedVersion: 2
-  m_LocalRotation: {x: 0.08278028, y: -0.78716713, z: 0.26699132, w: 0.54975545}
-  m_LocalPosition: {x: -0.019999795, y: 0.85, z: 1.99}
+  m_LocalRotation: {x: -0.3298957, y: 0.4825501, z: 0.055993136, w: 0.8094314}
+  m_LocalPosition: {x: -0.019999444, y: 0.85, z: 1.99}
   m_LocalScale: {x: 0.7400827, y: 1, z: 1.5554452}
   m_ConstrainProportionsScale: 0
   m_Children: []
   m_Father: {fileID: 0}
-  m_LocalEulerAnglesHint: {x: 149.246, y: -287.11902, z: -169.05}
+  m_LocalEulerAnglesHint: {x: 216.022, y: -473.047, z: -556.354}
 --- !u!1 &1013871477
 GameObject:
   m_ObjectHideFlags: 0
@@ -1353,6 +1357,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::HandManager
   deckManager: {fileID: 614004757}
   playManager: {fileID: 1761403112}
+  discardManager: {fileID: 0}
   cardPrefab: {fileID: 5626841725555915195, guid: 88401d24522082542bacab9ab8892de4, type: 3}
   handTransform: {fileID: 1611251604}
   fanSpread: -3
@@ -1360,6 +1365,7 @@ MonoBehaviour:
   verticalSpacing: 100
   handPositionUp: {x: 0, y: -512, z: 0}
   handPositionDown: {x: 0, y: -700, z: 0}
+  handPositionMoveSpeed: 8
   updateHandCardPositionsContinuously: 0
   cardsInHand: []
 --- !u!1 &1275980835
@@ -1410,6 +1416,9 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 6d38a430dadddf94780dcebfcc012afe, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::DiscardManager
+  gameController: {fileID: 244256270}
+  discardedCards: []
+  cardsToDiscard: 1
 --- !u!1 &1611251603
 GameObject:
   m_ObjectHideFlags: 0
@@ -1517,12 +1526,12 @@ Transform:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 1679342380}
   serializedVersion: 2
-  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalRotation: {x: -0, y: -0, z: -0, w: 1}
   m_LocalPosition: {x: 0, y: 0, z: 0}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
-  m_Father: {fileID: 0}
+  m_Father: {fileID: 1923372203}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &1761403110
 GameObject:
@@ -1618,6 +1627,7 @@ Transform:
   m_Children:
   - {fileID: 410087041}
   - {fileID: 832575519}
+  - {fileID: 1679342383}
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &1928475030
@@ -1829,7 +1839,6 @@ SceneRoots:
   - {fileID: 1923372203}
   - {fileID: 244256271}
   - {fileID: 330585546}
-  - {fileID: 1679342383}
   - {fileID: 2074437865}
   - {fileID: 980045961}
   - {fileID: 907082845874662369}

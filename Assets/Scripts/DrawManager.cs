@@ -10,6 +10,7 @@ public class DrawManager : MonoBehaviour
     [SerializeField] private DeckManager deckManager;
     [SerializeField] private HandManager handManager;
     [SerializeField] private ScoreManager scoreManager;
+    [SerializeField] private GameController gameController;
     [SerializeField, Min(0f)] private float hoverHeight = 0.2f;
     [SerializeField, Min(0f)] private float hoverMoveSpeed = 10f;
 
@@ -40,6 +41,11 @@ public class DrawManager : MonoBehaviour
         if (scoreManager == null)
         {
             scoreManager = FindFirstObjectByType<ScoreManager>();
+        }
+
+        if (gameController == null)
+        {
+            gameController = FindFirstObjectByType<GameController>();
         }
     }
 
@@ -82,6 +88,16 @@ public class DrawManager : MonoBehaviour
 
     private bool IsCardInteractionActive()
     {
+        if (gameController == null)
+        {
+            gameController = FindFirstObjectByType<GameController>();
+        }
+
+        if (gameController == null || gameController.CurrentPhase != TurnPhase.Draw)
+        {
+            return true;
+        }
+
         if (handManager == null)
         {
             handManager = FindFirstObjectByType<HandManager>();
@@ -163,6 +179,23 @@ public class DrawManager : MonoBehaviour
 
     private void DrawCards()
     {
+        if (gameController == null)
+        {
+            gameController = FindFirstObjectByType<GameController>();
+        }
+
+        if (gameController == null)
+        {
+            Debug.LogError("Cannot draw cards: no GameController exists in the scene.", this);
+            return;
+        }
+
+        if (gameController.CurrentPhase != TurnPhase.Draw)
+        {
+            Debug.LogWarning($"Cannot draw cards during the {gameController.CurrentPhase} phase.", this);
+            return;
+        }
+
         if (deckManager == null)
         {
             Debug.LogError("Cannot draw cards: no DeckManager is assigned or exists in the scene.", this);
@@ -175,9 +208,20 @@ public class DrawManager : MonoBehaviour
             return;
         }
 
+        int cardsDrawn = 0;
         for (int i = 0; i < Mathf.Max(0, cardsToDraw); i++)
         {
-            deckManager.DrawCard(handManager);
+            if (!deckManager.DrawCard(handManager))
+            {
+                break;
+            }
+
+            cardsDrawn++;
+        }
+
+        if (cardsDrawn > 0 && gameController != null && gameController.CurrentPhase == TurnPhase.Draw)
+        {
+            gameController.AdvancePhase();
         }
     }
 }

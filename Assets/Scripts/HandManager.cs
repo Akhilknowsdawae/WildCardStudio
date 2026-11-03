@@ -7,13 +7,24 @@ using System;
 
 public class HandManager : MonoBehaviour
 {
+    private struct ScoreCardCanvasGroupState
+    {
+        public CanvasGroup canvasGroup;
+        public float alpha;
+        public bool interactable;
+        public bool blocksRaycasts;
+    }
+
     private readonly HashSet<CardMovement> movementsDisabledWhileHandDown = new HashSet<CardMovement>();
-    private readonly Dictionary<GameObject, bool> scoreCardActiveStates = new Dictionary<GameObject, bool>();
+    private readonly Dictionary<GameObject, ScoreCardCanvasGroupState> scoreCardCanvasGroupStates =
+        new Dictionary<GameObject, ScoreCardCanvasGroupState>();
     private ScoreManager scoreManager;
+    private GameController gameController;
     private bool handIsDown;
 
     public DeckManager deckManager; //Reference to the DeckManager script
     [SerializeField] private PlayManager playManager;
+    [SerializeField] private DiscardManager discardManager;
     public GameObject cardPrefab; //Assign card prefab in the inspector
     public Transform handTransform; //Hand position
     public float fanSpread = 7.55f; //Angle between cards
@@ -32,6 +43,7 @@ public class HandManager : MonoBehaviour
     void Start()
     {
         scoreManager = FindFirstObjectByType<ScoreManager>();
+        gameController = FindFirstObjectByType<GameController>();
         if (handTransform != null)
         {
             targetHandPosition = handTransform.localPosition;
@@ -118,7 +130,27 @@ public class HandManager : MonoBehaviour
             SetHandPosition(handPositionDown, true);
         }
 
-        if (!handIsDown && Input.GetKeyDown(KeyCode.Space))
+        bool enterPressed = Input.GetKeyDown(KeyCode.Return) || Input.GetKeyDown(KeyCode.KeypadEnter);
+        if (!handIsDown && enterPressed
+            && (gameController == null || !gameController.EnterAdvancesPhaseEnabled))
+        {
+            if (discardManager == null)
+            {
+                discardManager = FindFirstObjectByType<DiscardManager>();
+            }
+
+            if (discardManager == null)
+            {
+                Debug.LogError("Cannot discard cards: no DiscardManager exists in the scene.", this);
+            }
+            else
+            {
+                discardManager.HandleEnter(this, scoreManager);
+            }
+        }
+
+        if (!handIsDown && Input.GetKeyDown(KeyCode.Space)
+            && (gameController == null || gameController.CurrentPhase == TurnPhase.Play))
         {
             if (playManager == null)
             {
@@ -154,7 +186,7 @@ public class HandManager : MonoBehaviour
         if (handIsDown)
         {
             SetHandCardMovementEnabled(false);
-            HideScoreCards();
+            FadeScoreCards();
         }
         else
         {
@@ -213,7 +245,7 @@ public class HandManager : MonoBehaviour
         }
     }
 
-    private void HideScoreCards()
+    private void FadeScoreCards()
     {
         if (scoreManager == null)
         {
@@ -222,33 +254,50 @@ public class HandManager : MonoBehaviour
 
         if (scoreManager == null)
         {
-            Debug.LogError("Cannot hide score cards: no ScoreManager exists in the scene.", this);
+            Debug.LogError("Cannot fade score cards: no ScoreManager exists in the scene.", this);
             return;
         }
 
         foreach (GameObject card in scoreManager.cardsInPlay)
         {
-            if (card == null || scoreCardActiveStates.ContainsKey(card))
+            if (card == null || scoreCardCanvasGroupStates.ContainsKey(card))
             {
                 continue;
             }
 
-            scoreCardActiveStates.Add(card, card.activeSelf);
-            card.SetActive(false);
+            CanvasGroup canvasGroup = card.GetComponent<CanvasGroup>();
+            if (canvasGroup == null)
+            {
+                canvasGroup = card.AddComponent<CanvasGroup>();
+            }
+
+            scoreCardCanvasGroupStates.Add(card, new ScoreCardCanvasGroupState
+            {
+                canvasGroup = canvasGroup,
+                alpha = canvasGroup.alpha,
+                interactable = canvasGroup.interactable,
+                blocksRaycasts = canvasGroup.blocksRaycasts
+            });
+            canvasGroup.alpha = scoreManager.ScoreCardsAlphaWhenHandDown;
+            canvasGroup.interactable = false;
+            canvasGroup.blocksRaycasts = false;
         }
     }
 
     private void RestoreScoreCards()
     {
-        foreach (KeyValuePair<GameObject, bool> cardState in scoreCardActiveStates)
+        foreach (KeyValuePair<GameObject, ScoreCardCanvasGroupState> cardState in scoreCardCanvasGroupStates)
         {
-            if (cardState.Key != null)
+            ScoreCardCanvasGroupState state = cardState.Value;
+            if (cardState.Key != null && state.canvasGroup != null)
             {
-                cardState.Key.SetActive(cardState.Value);
+                state.canvasGroup.alpha = state.alpha;
+                state.canvasGroup.interactable = state.interactable;
+                state.canvasGroup.blocksRaycasts = state.blocksRaycasts;
             }
         }
 
-        scoreCardActiveStates.Clear();
+        scoreCardCanvasGroupStates.Clear();
     }
 
     private void UpdateCardPositions()
