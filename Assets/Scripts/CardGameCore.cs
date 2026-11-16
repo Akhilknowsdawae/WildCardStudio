@@ -56,14 +56,16 @@ namespace WildCardStudio
         public bool IsValid;
         public ComboValidationReason Reason;
         public string Message;
+        public ComboScoringContext ScoringContext;
 
-        public static ComboValidationResult Success()
+        public static ComboValidationResult Success(ComboScoringContext scoringContext = null)
         {
             return new ComboValidationResult
             {
                 IsValid = true,
                 Reason = ComboValidationReason.None,
-                Message = string.Empty
+                Message = string.Empty,
+                ScoringContext = scoringContext ?? new ComboScoringContext()
             };
         }
 
@@ -73,7 +75,8 @@ namespace WildCardStudio
             {
                 IsValid = false,
                 Reason = reason,
-                Message = message
+                Message = message,
+                ScoringContext = null
             };
         }
     }
@@ -191,15 +194,58 @@ namespace WildCardStudio
 
         public int EffectiveValue
         {
-            get
+            get { return IsSpecialCard ? 0 : Rank; }
+        }
+    }
+
+    public sealed class ComboScoringContext
+    {
+        private readonly Dictionary<CardInstance, int> substitutedRanks =
+            new Dictionary<CardInstance, int>();
+
+        public IReadOnlyDictionary<CardInstance, int> Substitutions => substitutedRanks;
+
+        public bool TryGetSubstitutedRank(CardInstance card, out int rank)
+        {
+            return substitutedRanks.TryGetValue(card, out rank);
+        }
+
+        public int GetCardScore(CardInstance card, IReadOnlyList<CardInstance> comboCards)
+        {
+            if (card == null || comboCards == null)
             {
-                if (Type == CardType.Queen || Type == CardType.King)
+                return 0;
+            }
+
+            if (card.Type == CardType.Jack)
+            {
+                return comboCards.Count(comboCard => comboCard != null && comboCard.Suit == card.Suit);
+            }
+
+            if (TryGetSubstitutedRank(card, out int substitutedRank))
+            {
+                if (card.Type == CardType.Queen)
                 {
-                    return Rank;
+                    return substitutedRank / 2;
                 }
 
-                return Rank;
+                if (card.Type == CardType.King)
+                {
+                    return (substitutedRank + 1) / 2;
+                }
             }
+
+            return card.EffectiveValue;
+        }
+
+        internal void AddSubstitution(CardInstance card, int rank)
+        {
+            substitutedRanks.Add(card, rank);
+        }
+
+        internal void RemoveSubstitution(CardInstance card)
+        {
+            substitutedRanks.Remove(card);
         }
     }
 
@@ -219,6 +265,7 @@ namespace WildCardStudio
         public string ComboId;
         public ComboType Type;
         public List<CardInstance> Cards = new List<CardInstance>();
+        public ComboScoringContext ScoringContext = new ComboScoringContext();
         public PlayerState Owner;
         public bool IsLocked;
         public bool IsValid;
@@ -238,6 +285,16 @@ namespace WildCardStudio
                 return ComboValidationResult.Failure(ComboValidationReason.InsufficientCards, "Combo cannot be empty.");
             }
 
+            if (cards.Any(card => card == null))
+            {
+                return ComboValidationResult.Failure(ComboValidationReason.InvalidRank, "A combo cannot contain a missing card.");
+            }
+
+            if (cards.Distinct().Count() != cards.Count)
+            {
+                return ComboValidationResult.Failure(ComboValidationReason.InvalidRank, "A combo cannot contain the same card more than once.");
+            }
+
             if (comboType == ComboType.Set)
             {
                 if (cards.Count < MinimumSetCount)
@@ -245,18 +302,30 @@ namespace WildCardStudio
                     return ComboValidationResult.Failure(ComboValidationReason.InsufficientCards, "Sets require at least two cards.");
                 }
 
-                if (cards.Any(card => card == null))
+                if (!AllowSpecialCardSubstitutions && cards.Any(card => card.IsSpecialCard))
                 {
-                    return ComboValidationResult.Failure(ComboValidationReason.InvalidRank, "A set cannot contain a missing card.");
+                    return ComboValidationResult.Failure(ComboValidationReason.InvalidRank, "Special-card substitutions are disabled.");
                 }
 
-                var firstCard = cards[0];
-                if (cards.Skip(1).Any(card => !HasSamePrintedRank(firstCard, card)))
+                if (cards.Any(card => card.Type == CardType.Queen || card.Type == CardType.King))
                 {
-                    return ComboValidationResult.Failure(ComboValidationReason.InvalidRank, "A set must contain cards with the same printed rank.");
+                    return ComboValidationResult.Failure(ComboValidationReason.InvalidRank, "Queens and kings can only substitute in straights.");
                 }
 
-                return ComboValidationResult.Success();
+                var rankedCards = cards.Where(card => card.Type != CardType.Jack).ToList();
+                int substitutedRank = rankedCards.Count > 0 ? rankedCards[0].Rank : 1;
+                if (rankedCards.Any(card => card.Rank != substitutedRank))
+                {
+                    return ComboValidationResult.Failure(ComboValidationReason.InvalidRank, "A set must contain cards with the same rank.");
+                }
+
+                var scoringContext = new ComboScoringContext();
+                foreach (var card in cards.Where(card => card.Type == CardType.Jack))
+                {
+                    scoringContext.AddSubstitution(card, substitutedRank);
+                }
+
+                return ComboValidationResult.Success(scoringContext);
             }
 
             if (comboType == ComboType.Straight)
@@ -266,32 +335,113 @@ namespace WildCardStudio
                     return ComboValidationResult.Failure(ComboValidationReason.InsufficientCards, "Straights require at least four cards.");
                 }
 
-                var ordered = cards
-                    .OrderBy(card => card.Rank)
-                    .Select(card => card)
-                    .ToList();
-
-                if (!IsValidStraight(ordered))
+                if (!AllowSpecialCardSubstitutions && cards.Any(card => card.IsSpecialCard))
                 {
-                    return ComboValidationResult.Failure(ComboValidationReason.InvalidSequence, "Straight must be a valid numerical sequence.");
+                    return ComboValidationResult.Failure(ComboValidationReason.InvalidSequence, "Special-card substitutions are disabled.");
                 }
 
-                return ComboValidationResult.Success();
+                return ValidateStraight(cards);
             }
 
             return ComboValidationResult.Failure(ComboValidationReason.InvalidComboType, "Unsupported combo type.");
         }
 
-        private static bool HasSamePrintedRank(CardInstance firstCard, CardInstance secondCard)
+        private ComboValidationResult ValidateStraight(IReadOnlyList<CardInstance> cards)
         {
-            if (firstCard.IsSpecialCard || secondCard.IsSpecialCard)
+            List<CardInstance> rankedCards = cards.Where(card => !card.IsSpecialCard).ToList();
+            HashSet<int> rankedValues = new HashSet<int>();
+            foreach (CardInstance card in rankedCards)
             {
-                return firstCard.IsSpecialCard
-                    && secondCard.IsSpecialCard
-                    && firstCard.Type == secondCard.Type;
+                if (!rankedValues.Add(card.Rank))
+                {
+                    return ComboValidationResult.Failure(ComboValidationReason.InvalidSequence, "Straight cards must have distinct ranks.");
+                }
             }
 
-            return firstCard.Rank == secondCard.Rank;
+            int minimumStart = rankedCards.Count == 0
+                ? 1
+                : rankedCards.Max(card => card.Rank) - cards.Count + 1;
+            int maximumStart = rankedCards.Count == 0
+                ? 2
+                : rankedCards.Min(card => card.Rank);
+
+            // Prefer the highest-scoring valid replacement ranks when multiple straights fit.
+            for (int startRank = maximumStart; startRank >= minimumStart; startRank--)
+            {
+                bool[] occupiedRanks = new bool[cards.Count];
+                bool ranksFit = true;
+                foreach (CardInstance card in rankedCards)
+                {
+                    int slot = card.Rank - startRank;
+                    if (slot < 0 || slot >= occupiedRanks.Length || occupiedRanks[slot])
+                    {
+                        ranksFit = false;
+                        break;
+                    }
+
+                    occupiedRanks[slot] = true;
+                }
+
+                if (!ranksFit)
+                {
+                    continue;
+                }
+
+                List<CardInstance> specialCards = cards
+                    .Where(card => card.IsSpecialCard)
+                    .OrderBy(card => card.Type == CardType.Jack ? 1 : 0)
+                    .ToList();
+                var scoringContext = new ComboScoringContext();
+                if (TryAssignSpecialCards(specialCards, 0, startRank, occupiedRanks, scoringContext))
+                {
+                    return ComboValidationResult.Success(scoringContext);
+                }
+            }
+
+            return ComboValidationResult.Failure(
+                ComboValidationReason.InvalidSequence,
+                "Straight must form a sequence with valid special-card substitutions.");
+        }
+
+        private static bool TryAssignSpecialCards(
+            IReadOnlyList<CardInstance> specialCards,
+            int specialCardIndex,
+            int startRank,
+            bool[] occupiedRanks,
+            ComboScoringContext scoringContext)
+        {
+            if (specialCardIndex >= specialCards.Count)
+            {
+                return true;
+            }
+
+            CardInstance card = specialCards[specialCardIndex];
+            for (int slot = occupiedRanks.Length - 1; slot >= 0; slot--)
+            {
+                if (occupiedRanks[slot])
+                {
+                    continue;
+                }
+
+                int substitutedRank = startRank + slot;
+                if (card.Type == CardType.Queen && substitutedRank % 2 != 0
+                    || card.Type == CardType.King && substitutedRank % 2 == 0)
+                {
+                    continue;
+                }
+
+                occupiedRanks[slot] = true;
+                scoringContext.AddSubstitution(card, substitutedRank);
+                if (TryAssignSpecialCards(specialCards, specialCardIndex + 1, startRank, occupiedRanks, scoringContext))
+                {
+                    return true;
+                }
+
+                scoringContext.RemoveSubstitution(card);
+                occupiedRanks[slot] = false;
+            }
+
+            return false;
         }
 
         public ComboValidationResult CanAddCard(Combo combo, CardInstance card, PlayerState player, GameController controller = null)
@@ -329,7 +479,7 @@ namespace WildCardStudio
                 return result;
             }
 
-            return ComboValidationResult.Success();
+            return result;
         }
 
         public bool IsValid(Combo combo, PlayerState player, GameController controller = null)
@@ -362,33 +512,5 @@ namespace WildCardStudio
             return combo.Owner != player;
         }
 
-        private bool IsValidStraight(IReadOnlyList<CardInstance> orderedCards)
-        {
-            if (orderedCards.Count < MinimumStraightCount)
-            {
-                return false;
-            }
-
-            var uniqueRanks = orderedCards
-                .Select(card => card.Rank)
-                .Distinct()
-                .OrderBy(rank => rank)
-                .ToList();
-
-            if (uniqueRanks.Count < orderedCards.Count)
-            {
-                return false;
-            }
-
-            for (var index = 1; index < orderedCards.Count; index++)
-            {
-                if (orderedCards[index].Rank != orderedCards[index - 1].Rank + 1)
-                {
-                    return false;
-                }
-            }
-
-            return true;
-        }
     }
 }

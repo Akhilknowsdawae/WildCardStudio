@@ -1,9 +1,16 @@
 using System.Collections.Generic;
+using TMPro;
 using UnityEngine;
+using LifeAfter;
+using WildCardStudio;
 
 public class ScoreManager : MonoBehaviour
 {
     public List<GameObject> cardsInPlay = new List<GameObject>();
+
+    [SerializeField] private TMP_Text scoringHandScoreText;
+    [SerializeField] private TMP_Text totalScoreText;
+    private int totalScore;
 
     [Header("Card Layout")]
     [SerializeField] private Transform playedCardsParent;
@@ -19,6 +26,12 @@ public class ScoreManager : MonoBehaviour
 
     public float CardSpacing => cardSpacing;
     public float ScoreCardsAlphaWhenHandDown => scoreCardsAlphaWhenHandDown;
+
+    private void Start()
+    {
+        RefreshScoringHandScore();
+        RefreshTotalScore();
+    }
 
     private void Update()
     {
@@ -69,6 +82,7 @@ public class ScoreManager : MonoBehaviour
         cardsInPlay.Add(card);
         UpdatePlayedCardPositions();
         RefreshCardDisplay(card);
+        RefreshScoringHandScore();
         return true;
     }
 
@@ -80,7 +94,134 @@ public class ScoreManager : MonoBehaviour
         }
 
         UpdatePlayedCardPositions();
+        RefreshScoringHandScore();
         return true;
+    }
+
+    public int CurrentScoringHandScore => CalculateScoringHandScore(out _, out _);
+
+    public void AddToTotalScore(int score)
+    {
+        totalScore += score;
+        RefreshTotalScore();
+    }
+
+    public void ResetTotalScore()
+    {
+        totalScore = 0;
+        RefreshTotalScore();
+    }
+
+    private void RefreshScoringHandScore()
+    {
+        if (scoringHandScoreText == null)
+        {
+            Debug.LogError("Cannot update the scoring-hand score: assign a Score Text in the ScoreManager.", this);
+            return;
+        }
+
+        int score = CalculateScoringHandScore(out int scoringCardCount, out bool flushBonusActive);
+        scoringHandScoreText.text = flushBonusActive ? $"{score} x1.5" : score.ToString();
+        scoringHandScoreText.gameObject.SetActive(scoringCardCount > 0);
+    }
+
+    private int CalculateScoringHandScore(out int scoringCardCount, out bool flushBonusActive)
+    {
+        List<CardInstance> scoringCards = new List<CardInstance>();
+        scoringCardCount = 0;
+        bool allCardsHaveSuit = true;
+        bool allSuitsMatch = true;
+        Suit scoringSuit = default(Suit);
+        if (cardsInPlay != null)
+        {
+            foreach (GameObject card in cardsInPlay)
+            {
+                if (card == null)
+                {
+                    continue;
+                }
+
+                scoringCardCount++;
+                CardDisplay cardDisplay = card.GetComponent<CardDisplay>();
+                if (cardDisplay == null || cardDisplay.cardData == null)
+                {
+                    Debug.LogError("Cannot calculate the scoring-hand score: a card is missing its CardDisplay or card data.", card);
+                    allSuitsMatch = false;
+                    continue;
+                }
+
+                Card definition = cardDisplay.cardData;
+                Suit suit = definition.suit != null && definition.suit.Count > 0
+                    ? definition.suit[0]
+                    : default(Suit);
+                CardType type = definition.cardType != null && definition.cardType.Count > 0
+                    ? definition.cardType[0]
+                    : CardType.Number;
+                scoringCards.Add(new CardInstance
+                {
+                    InstanceId = card.GetInstanceID().ToString(),
+                    Definition = definition,
+                    Rank = definition.cardRank,
+                    Suit = suit,
+                    Type = type
+                });
+
+                if (definition.suit == null || definition.suit.Count == 0)
+                {
+                    allCardsHaveSuit = false;
+                }
+                else if (scoringCards.Count == 1)
+                {
+                    scoringSuit = suit;
+                }
+                else if (suit != scoringSuit)
+                {
+                    allSuitsMatch = false;
+                }
+            }
+        }
+
+        var validator = new BasicComboValidator();
+        ComboType comboType = ComboType.Set;
+        ComboValidationResult validation = validator.CanCreateCombo(scoringCards, comboType, null);
+        if (!validation.IsValid)
+        {
+            comboType = ComboType.Straight;
+            validation = validator.CanCreateCombo(scoringCards, comboType, null);
+        }
+
+        int score = 0;
+        if (validation.IsValid)
+        {
+            foreach (CardInstance card in scoringCards)
+            {
+                score += validation.ScoringContext.GetCardScore(card, scoringCards);
+            }
+        }
+        else
+        {
+            foreach (CardInstance card in scoringCards)
+            {
+                score += card.EffectiveValue;
+            }
+        }
+
+        flushBonusActive = validation.IsValid
+            && scoringCardCount >= 2
+            && allCardsHaveSuit
+            && allSuitsMatch;
+        return score;
+    }
+
+    private void RefreshTotalScore()
+    {
+        if (totalScoreText == null)
+        {
+            Debug.LogError("Cannot update the total score: assign a Total Score Text in the ScoreManager.", this);
+            return;
+        }
+
+        totalScoreText.text = totalScore.ToString();
     }
 
     private static void RefreshCardDisplay(GameObject card)

@@ -304,6 +304,7 @@ public class PlayManager : MonoBehaviour
             return false;
         }
 
+        int scoreForTurn = scoreManager != null ? scoreManager.CurrentScoringHandScore : 0;
         PlayedCardSet newSet = new PlayedCardSet();
         foreach (GameObject card in cards)
         {
@@ -332,6 +333,11 @@ public class PlayManager : MonoBehaviour
         if (newSet.cards.Count > 0)
         {
             playedCardSets.Add(newSet);
+            if (scoreManager != null)
+            {
+                scoreManager.AddToTotalScore(scoreForTurn);
+            }
+
             UpdatePlayedCardPositions();
         }
 

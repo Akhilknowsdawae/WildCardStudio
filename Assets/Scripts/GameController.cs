@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using TMPro;
 using UnityEngine;
 
 namespace WildCardStudio
@@ -16,6 +17,14 @@ namespace WildCardStudio
         [SerializeField] private int currentTurnNumber = 1;
         [SerializeField] private bool matchEnded;
         [SerializeField] private bool enterAdvancesPhase = true;
+
+        [Header("Phase Display")]
+        [SerializeField] private TMP_Text phaseDisplayText;
+        [SerializeField] private string drawPhaseText = "Draw";
+        [SerializeField] private string playPhaseText = "Play";
+        [SerializeField] private string discardPhaseText = "Discard";
+        [SerializeField] private string resolveTurnPhaseText = "Resolve Turn";
+        [SerializeField] private string gameOverPhaseText = "Game Over";
 
         [Header("Systems")]
         private IComboValidator comboValidator;
@@ -50,6 +59,8 @@ namespace WildCardStudio
             {
                 comboValidator = new BasicComboValidator();
             }
+
+            UpdatePhaseDisplay();
         }
 
         private void Update()
@@ -105,7 +116,14 @@ namespace WildCardStudio
             currentTurnNumber = 1;
             matchEnded = false;
             currentPhase = TurnPhase.Draw;
+            UpdatePhaseDisplay();
             activeCombos.Clear();
+
+            ScoreManager scoreManager = FindFirstObjectByType<ScoreManager>();
+            if (scoreManager != null)
+            {
+                scoreManager.ResetTotalScore();
+            }
 
             if (eventDispatcher == null)
             {
@@ -128,6 +146,7 @@ namespace WildCardStudio
             }
 
             currentPhase = TurnPhase.Draw;
+            UpdatePhaseDisplay();
             eventDispatcher.Publish(new TurnStartedEvent(ActivePlayer, currentTurnNumber));
             ResolveTurnBasedEffects();
         }
@@ -160,6 +179,7 @@ namespace WildCardStudio
                     break;
             }
 
+            UpdatePhaseDisplay();
             eventDispatcher.Publish(new PhaseChangedEvent(currentPhase, ActivePlayer, currentTurnNumber));
         }
 
@@ -181,6 +201,7 @@ namespace WildCardStudio
             }
 
             currentPhase = TurnPhase.Discard;
+            UpdatePhaseDisplay();
             eventDispatcher.Publish(new PhaseChangedEvent(currentPhase, ActivePlayer, currentTurnNumber));
             return true;
         }
@@ -232,13 +253,15 @@ namespace WildCardStudio
                 Type = comboType,
                 Cards = cards ?? new List<CardInstance>(),
                 Owner = player,
+                ScoringContext = validation.ScoringContext,
                 Score = 0,
                 IsValid = true
             };
 
+            combo.Score = CalculateComboScore(combo, validation.ScoringContext);
             activeCombos.Add(combo);
             eventDispatcher.Publish(new ComboCreatedEvent(combo, player));
-            return ComboValidationResult.Success();
+            return validation;
         }
 
         public ComboValidationResult TryAddCardToCombo(PlayerState player, Combo combo, CardInstance card)
@@ -279,7 +302,7 @@ namespace WildCardStudio
 
             eventDispatcher.Publish(new ComboModifiedEvent(combo, player, card));
             CheckWinConditionAfterAction(player);
-            return ComboValidationResult.Success();
+            return validation;
         }
 
         public void DiscardCard(PlayerState player, CardInstance card)
@@ -319,6 +342,7 @@ namespace WildCardStudio
             currentTurnNumber++;
             AdvanceToNextPlayer();
             currentPhase = TurnPhase.Draw;
+            UpdatePhaseDisplay();
             eventDispatcher.Publish(new TurnResolvedEvent(ActivePlayer, currentTurnNumber));
         }
 
@@ -331,6 +355,7 @@ namespace WildCardStudio
 
             matchEnded = true;
             currentPhase = TurnPhase.GameOver;
+            UpdatePhaseDisplay();
 
             foreach (var player in players)
             {
@@ -342,11 +367,29 @@ namespace WildCardStudio
 
             foreach (var combo in activeCombos)
             {
-                combo.Score = CalculateComboScore(combo);
+                RevalidateCombo(combo);
             }
 
             var winner = DetermineWinner();
             eventDispatcher.Publish(new MatchEndedEvent(winner, players, activeCombos));
+        }
+
+        private void UpdatePhaseDisplay()
+        {
+            if (phaseDisplayText == null)
+            {
+                return;
+            }
+
+            phaseDisplayText.text = currentPhase switch
+            {
+                TurnPhase.Draw => drawPhaseText,
+                TurnPhase.Play => playPhaseText,
+                TurnPhase.Discard => discardPhaseText,
+                TurnPhase.ResolveTurn => resolveTurnPhaseText,
+                TurnPhase.GameOver => gameOverPhaseText,
+                _ => currentPhase.ToString()
+            };
         }
 
         public void RevalidateCombo(Combo combo)
@@ -356,8 +399,16 @@ namespace WildCardStudio
                 return;
             }
 
-            combo.IsValid = comboValidator.IsValid(combo, combo.Owner ?? ActivePlayer, this);
-            combo.Score = CalculateComboScore(combo);
+            ComboValidationResult validation = comboValidator.CanCreateCombo(
+                combo.Cards,
+                combo.Type,
+                combo.Owner ?? ActivePlayer,
+                this);
+            combo.IsValid = validation.IsValid;
+            combo.ScoringContext = validation.ScoringContext;
+            combo.Score = validation.IsValid
+                ? CalculateComboScore(combo, validation.ScoringContext)
+                : 0f;
         }
 
         public float CalculateComboScore(Combo combo)
@@ -367,9 +418,28 @@ namespace WildCardStudio
                 return 0f;
             }
 
-            var baseScore = combo.Type == ComboType.Set
-                ? combo.Cards.Sum(card => card.EffectiveValue)
-                : combo.Cards.Sum(card => card.EffectiveValue) * 2;
+            ComboValidationResult validation = comboValidator.CanCreateCombo(
+                combo.Cards,
+                combo.Type,
+                combo.Owner ?? ActivePlayer,
+                this);
+            if (!validation.IsValid)
+            {
+                combo.ScoringContext = null;
+                return 0f;
+            }
+
+            combo.ScoringContext = validation.ScoringContext;
+            return CalculateComboScore(combo, validation.ScoringContext);
+        }
+
+        private float CalculateComboScore(Combo combo, ComboScoringContext scoringContext)
+        {
+            float baseScore = combo.Cards.Sum(card => scoringContext.GetCardScore(card, combo.Cards));
+            if (combo.Type == ComboType.Straight)
+            {
+                baseScore *= 2f;
+            }
 
             var flushMultiplier = combo.Cards.All(card => card.Suit == combo.Cards[0].Suit) ? 1.5f : 1f;
             return baseScore * flushMultiplier * baseScoreMultiplier;
