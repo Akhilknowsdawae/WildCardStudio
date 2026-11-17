@@ -43,6 +43,8 @@ public class PlayManager : MonoBehaviour
     [SerializeField] private float fanSpread = 7.55f;
     [SerializeField] private float cardSpacing = 100f;
     [SerializeField] private float spaceBetweenCardSets = 250f;
+    [SerializeField, Min(0f), Tooltip("Gap between a staged card and its combo, in played-card parent local units.")]
+    private float stagedCardHoverDistance = 0.5f;
     [SerializeField] private Vector3 firstRowPositionOffset = Vector3.zero;
     [SerializeField] private Vector3 nextRowPositionOffset = new Vector3(0f, 160f, 0f);
     [SerializeField, Min(1)] private int maxCardSetsPerRow = 6;
@@ -174,7 +176,101 @@ public class PlayManager : MonoBehaviour
                 return false;
             }
 
+            if (targetSet.cards == null)
+            {
+                Debug.LogError("Cannot add a card to a table combo: the target combo has no card list.", this);
+                return false;
+            }
+
+            List<GameObject> proposedCards = new List<GameObject>(targetSet.cards);
+            foreach (PendingCardPlacement stagedPlacement in pendingCardPlacements)
+            {
+                if (stagedPlacement != placement
+                    && stagedPlacement.targetSet == targetSet
+                    && stagedPlacement.card != null)
+                {
+                    proposedCards.Add(stagedPlacement.card);
+                }
+            }
+
+            proposedCards.Add(card);
+            if (!IsValidCombo(proposedCards, targetSet.type, out ComboType validatedType))
+            {
+                placement.targetSet = null;
+                return false;
+            }
+
+            if (!TryPositionStagedCardAboveCombo(placement, targetSet, targetCard))
+            {
+                return false;
+            }
+
+            targetSet.type = validatedType;
             placement.targetSet = targetSet;
+            return true;
+        }
+
+        private bool TryPositionStagedCardAboveCombo(
+            PendingCardPlacement placement,
+            PlayedCardSet targetSet,
+            GameObject fallbackTarget)
+        {
+            GameObject anchorCard = null;
+            Vector3 anchorLocalPosition = Vector3.zero;
+            bool useSavedPendingPosition = false;
+
+            foreach (GameObject existingCard in targetSet.cards)
+            {
+                if (existingCard != null)
+                {
+                    anchorCard = existingCard;
+                    break;
+                }
+            }
+
+            if (anchorCard == null)
+            {
+                foreach (PendingCardPlacement stagedPlacement in pendingCardPlacements)
+                {
+                    if (stagedPlacement != placement
+                        && stagedPlacement.targetSet == targetSet
+                        && stagedPlacement.card != null)
+                    {
+                        anchorCard = stagedPlacement.card;
+                        anchorLocalPosition = stagedPlacement.zoomedInLocalPosition;
+                        useSavedPendingPosition = true;
+                        break;
+                    }
+                }
+            }
+
+            if (anchorCard == null)
+            {
+                anchorCard = fallbackTarget;
+            }
+
+            RectTransform stagedRect = placement.card.GetComponent<RectTransform>();
+            RectTransform anchorRect = anchorCard != null
+                ? anchorCard.GetComponent<RectTransform>()
+                : null;
+            if (stagedRect == null || anchorRect == null || playedCardsParent == null)
+            {
+                Debug.LogError("Cannot position the staged card above its combo: a card RectTransform or Played Cards Parent is missing.", this);
+                return false;
+            }
+
+            if (!useSavedPendingPosition)
+            {
+                anchorLocalPosition = playedCardsParent.InverseTransformPoint(anchorCard.transform.position);
+            }
+
+            Vector3 anchorUp = playedCardsParent.InverseTransformDirection(anchorCard.transform.up).normalized;
+            float cardHalfHeight = stagedRect.rect.height * stagedRect.localScale.y * 0.5f;
+            float anchorHalfHeight = anchorRect.rect.height * anchorRect.localScale.y * 0.5f;
+            float hoverOffset = cardHalfHeight + anchorHalfHeight + stagedCardHoverDistance;
+
+            placement.card.transform.localPosition = anchorLocalPosition + anchorUp * hoverOffset;
+            placement.card.transform.localRotation = anchorCard.transform.localRotation;
             return true;
         }
 

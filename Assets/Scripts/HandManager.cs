@@ -38,6 +38,9 @@ public class HandManager : MonoBehaviour
     private Vector3 targetCameraPosition;
     private Quaternion targetCameraRotation;
     private Vector3 neutralHandPosition;
+    private readonly List<Canvas> canvasesUsingMainCamera = new List<Canvas>();
+    private bool tableCameraIsActive;
+    private bool activateTableCameraAfterTransition;
     private HandViewState handViewState = HandViewState.Neutral;
 
     public DeckManager deckManager; //Reference to the DeckManager script
@@ -56,6 +59,7 @@ public class HandManager : MonoBehaviour
     [SerializeField, Min(0.01f)] private float handFadeDuration = 0.25f;
     [Header("Play View")]
     [SerializeField] private Camera cameraToMove;
+    [SerializeField] private Camera tableCamera;
     [SerializeField] private Transform zoomedInCameraPositionReference;
     [SerializeField] private Vector3 zoomedInCameraPositionOffset;
     [SerializeField, Min(0f)] private float cameraMoveSpeed = 3f;
@@ -90,12 +94,31 @@ public class HandManager : MonoBehaviour
             cameraToMove = Camera.main;
         }
 
+        if (tableCamera == cameraToMove && tableCamera != null)
+        {
+            Debug.LogError("The Table Camera must be different from the Camera To Move.", this);
+            tableCamera = null;
+        }
+
         if (cameraToMove != null)
         {
             neutralCameraPosition = cameraToMove.transform.position;
             neutralCameraRotation = cameraToMove.transform.rotation;
             targetCameraPosition = neutralCameraPosition;
             targetCameraRotation = neutralCameraRotation;
+        }
+
+        if (tableCamera != null && cameraToMove != null)
+        {
+            foreach (Canvas sceneCanvas in FindObjectsByType<Canvas>(FindObjectsSortMode.None))
+            {
+                if (sceneCanvas.worldCamera == cameraToMove)
+                {
+                    canvasesUsingMainCamera.Add(sceneCanvas);
+                }
+            }
+
+            SetActiveViewCamera(cameraToMove);
         }
     }
 
@@ -298,9 +321,12 @@ public class HandManager : MonoBehaviour
                 return;
             }
 
-            if (cameraToMove == null || zoomedInCameraPositionReference == null)
+            if (cameraToMove == null
+                || (tableCamera == null && zoomedInCameraPositionReference == null))
             {
-                Debug.LogError("Cannot enter the zoomed-in view: assign the camera and zoom position reference.", this);
+                Debug.LogError(
+                    "Cannot enter the zoomed-in view: assign the Camera To Move and Table Camera (or a Zoomed In Camera Position Reference).",
+                    this);
                 return;
             }
 
@@ -309,9 +335,13 @@ public class HandManager : MonoBehaviour
                 return;
             }
         }
-        else if (handViewState == HandViewState.ZoomedIn && playManager != null)
+        else if (handViewState == HandViewState.ZoomedIn)
         {
-            playManager.EndZoomedInView();
+            SwitchToMainCamera();
+            if (playManager != null)
+            {
+                playManager.EndZoomedInView();
+            }
         }
 
         handViewState = nextState;
@@ -332,6 +362,7 @@ public class HandManager : MonoBehaviour
         SetHandCardMovementEnabled(false);
         if (handViewState == HandViewState.ZoomedIn)
         {
+            activateTableCameraAfterTransition = tableCamera != null;
             UpdateCameraTargetFromReference();
         }
     }
@@ -404,7 +435,7 @@ public class HandManager : MonoBehaviour
 
     private void UpdateCameraPosition()
     {
-        if (cameraToMove == null)
+        if (cameraToMove == null || tableCameraIsActive)
         {
             return;
         }
@@ -417,6 +448,7 @@ public class HandManager : MonoBehaviour
         if (cameraMoveSpeed <= 0f)
         {
             cameraToMove.transform.SetPositionAndRotation(targetCameraPosition, targetCameraRotation);
+            ActivateTableCameraWhenReady();
             return;
         }
 
@@ -429,17 +461,100 @@ public class HandManager : MonoBehaviour
             cameraToMove.transform.rotation,
             targetCameraRotation,
             interpolation);
+        ActivateTableCameraWhenReady();
     }
 
     private void UpdateCameraTargetFromReference()
     {
-        if (zoomedInCameraPositionReference == null)
+        Transform cameraReference = tableCamera != null
+            ? tableCamera.transform
+            : zoomedInCameraPositionReference;
+        if (cameraReference == null)
         {
             return;
         }
 
-        targetCameraPosition = zoomedInCameraPositionReference.TransformPoint(zoomedInCameraPositionOffset);
-        targetCameraRotation = zoomedInCameraPositionReference.rotation;
+        targetCameraPosition = cameraReference.TransformPoint(zoomedInCameraPositionOffset);
+        targetCameraRotation = cameraReference.rotation;
+    }
+
+    private void ActivateTableCameraWhenReady()
+    {
+        if (!activateTableCameraAfterTransition || tableCamera == null
+            || Vector3.Distance(cameraToMove.transform.position, targetCameraPosition) > 0.01f
+            || Quaternion.Angle(cameraToMove.transform.rotation, targetCameraRotation) > 0.1f)
+        {
+            return;
+        }
+
+        cameraToMove.transform.SetPositionAndRotation(targetCameraPosition, targetCameraRotation);
+        tableCamera.transform.SetPositionAndRotation(targetCameraPosition, targetCameraRotation);
+        SetActiveViewCamera(tableCamera);
+        tableCameraIsActive = true;
+        activateTableCameraAfterTransition = false;
+    }
+
+    private void SwitchToMainCamera()
+    {
+        activateTableCameraAfterTransition = false;
+        if (!tableCameraIsActive || tableCamera == null || cameraToMove == null)
+        {
+            return;
+        }
+
+        cameraToMove.transform.SetPositionAndRotation(
+            tableCamera.transform.position,
+            tableCamera.transform.rotation);
+        SetActiveViewCamera(cameraToMove);
+        tableCameraIsActive = false;
+    }
+
+    private void SetActiveViewCamera(Camera activeCamera)
+    {
+        bool useTableCamera = tableCamera != null && activeCamera == tableCamera;
+        if (useTableCamera && !tableCamera.gameObject.activeSelf)
+        {
+            tableCamera.gameObject.SetActive(true);
+        }
+
+        if (cameraToMove != null)
+        {
+            cameraToMove.enabled = activeCamera == cameraToMove;
+        }
+
+        if (tableCamera != null)
+        {
+            tableCamera.enabled = useTableCamera;
+        }
+
+        AudioListener mainListener = cameraToMove != null
+            ? cameraToMove.GetComponent<AudioListener>()
+            : null;
+        AudioListener tableListener = tableCamera != null
+            ? tableCamera.GetComponent<AudioListener>()
+            : null;
+        if (mainListener != null)
+        {
+            mainListener.enabled = activeCamera != tableCamera || tableListener == null;
+        }
+
+        if (tableListener != null)
+        {
+            tableListener.enabled = activeCamera == tableCamera || mainListener == null;
+        }
+
+        foreach (Canvas sceneCanvas in canvasesUsingMainCamera)
+        {
+            if (sceneCanvas != null)
+            {
+                sceneCanvas.worldCamera = activeCamera;
+            }
+        }
+
+        if (tableCamera != null && !useTableCamera && tableCamera.gameObject.activeSelf)
+        {
+            tableCamera.gameObject.SetActive(false);
+        }
     }
 
     public bool TryStageCardForCombo(GameObject card, GameObject targetCard)

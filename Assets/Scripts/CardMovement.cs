@@ -193,16 +193,20 @@ public class CardMovement : MonoBehaviour, IDragHandler, IDropHandler, IPointerD
             }
 
             isDraggingPlayedCardToHand = false;
+            if (!CanvasPointerDragUtility.TryGetLocalPointerPosition(
+                dragPlane,
+                eventData.position,
+                eventData.pressEventCamera,
+                out originalLocalPointerPosition))
+            {
+                return;
+            }
+
             currentState = (isPlayed || IsInScoringList())
                 && (handManager == null || !handManager.IsZoomedIn)
                 ? 4
                 : 2;
             cardsBeingDragged.Add(this);
-            RectTransformUtility.ScreenPointToLocalPointInRectangle(
-                dragPlane,
-                eventData.position,
-                ResolveEventCamera(eventData.pressEventCamera),
-                out originalLocalPointerPosition);
             originalPanelLocalPosition = rectTransform.localPosition;
         }
     }
@@ -280,23 +284,22 @@ public class CardMovement : MonoBehaviour, IDragHandler, IDropHandler, IPointerD
 
             wasDragged = true;
             Vector2 localPointerPosition;
-            if (!RectTransformUtility.ScreenPointToLocalPointInRectangle(
+            if (!CanvasPointerDragUtility.TryGetLocalPointerPosition(
                 dragPlane,
                 eventData.position,
-                ResolveEventCamera(eventData.pressEventCamera),
+                eventData.pressEventCamera,
                 out localPointerPosition))
             {
                 return;
             }
 
-            Vector2 pointerDelta = localPointerPosition - originalLocalPointerPosition;
-            Vector3 targetPosition = originalPanelLocalPosition + (Vector3)pointerDelta;
+            Vector2 localPointerDelta = localPointerPosition - originalLocalPointerPosition;
             if (handManager != null && handManager.IsZoomedIn)
             {
-                targetPosition.y = originalPanelLocalPosition.y
-                    + pointerDelta.y * Mathf.Clamp01(tableVerticalDragMultiplier);
+                localPointerDelta.y *= Mathf.Clamp01(tableVerticalDragMultiplier);
             }
 
+            Vector3 targetPosition = originalPanelLocalPosition + (Vector3)localPointerDelta;
             rectTransform.localPosition = Vector3.Lerp(rectTransform.localPosition, targetPosition, lerpFactor);
             if (handManager != null && handManager.IsZoomedIn)
             {
@@ -331,27 +334,6 @@ public class CardMovement : MonoBehaviour, IDragHandler, IDropHandler, IPointerD
         }
     }
 
-    private Camera ResolveEventCamera(Camera eventCamera)
-    {
-        if (eventCamera != null)
-        {
-            return eventCamera;
-        }
-
-        Canvas activeCanvas = GetComponentInParent<Canvas>();
-        if (activeCanvas == null || activeCanvas.renderMode == RenderMode.ScreenSpaceOverlay)
-        {
-            return null;
-        }
-
-        if (activeCanvas.worldCamera != null)
-        {
-            return activeCanvas.worldCamera;
-        }
-
-        return Camera.main;
-    }
-
     public void OnDrop(PointerEventData eventData)
     {
         if (handManager == null || !handManager.IsZoomedIn || eventData.pointerDrag == null)
@@ -370,6 +352,10 @@ public class CardMovement : MonoBehaviour, IDragHandler, IDropHandler, IPointerD
             draggedCard.originalPosition = draggedCard.rectTransform.localPosition;
             draggedCard.originalRotation = draggedCard.rectTransform.localRotation;
             draggedCard.originalScale = draggedCard.rectTransform.localScale;
+        }
+        else
+        {
+            draggedCard.ShowInvalidComboIndicator();
         }
     }
 
@@ -603,5 +589,46 @@ public class CardMovement : MonoBehaviour, IDragHandler, IDropHandler, IPointerD
     private void OnDisable()
     {
         cardsBeingDragged.Remove(this);
+    }
+}
+
+internal static class CanvasPointerDragUtility
+{
+    public static bool TryGetLocalPointerPosition(
+        RectTransform dragPlane,
+        Vector2 screenPosition,
+        Camera eventCamera,
+        out Vector2 localPosition)
+    {
+        localPosition = Vector2.zero;
+        if (dragPlane == null)
+        {
+            return false;
+        }
+
+        Camera camera = ResolveEventCamera(dragPlane, eventCamera);
+        return RectTransformUtility.ScreenPointToLocalPointInRectangle(
+                dragPlane,
+                screenPosition,
+                camera,
+                out localPosition);
+    }
+
+    private static Camera ResolveEventCamera(RectTransform dragPlane, Camera eventCamera)
+    {
+        Canvas canvas = dragPlane.GetComponentInParent<Canvas>();
+        if (canvas == null || canvas.renderMode == RenderMode.ScreenSpaceOverlay)
+        {
+            return canvas == null ? eventCamera : null;
+        }
+
+        if (canvas.renderMode == RenderMode.WorldSpace)
+        {
+            return canvas.worldCamera != null ? canvas.worldCamera : Camera.main;
+        }
+
+        return eventCamera != null
+            ? eventCamera
+            : canvas.worldCamera != null ? canvas.worldCamera : Camera.main;
     }
 }
