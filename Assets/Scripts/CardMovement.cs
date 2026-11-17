@@ -4,7 +4,7 @@ using System.Collections.Generic;
 using LifeAfter;
 using WildCardStudio;
 
-public class CardMovement : MonoBehaviour, IDragHandler, IPointerDownHandler, IPointerEnterHandler, IPointerExitHandler, IPointerClickHandler
+public class CardMovement : MonoBehaviour, IDragHandler, IDropHandler, IPointerDownHandler, IPointerEnterHandler, IPointerExitHandler, IPointerClickHandler
 {
     private static readonly List<CardMovement> cardsInPlay = new List<CardMovement>();
     private static readonly HashSet<CardMovement> cardsWithActiveInvalidComboIndicators = new HashSet<CardMovement>();
@@ -36,6 +36,8 @@ public class CardMovement : MonoBehaviour, IDragHandler, IPointerDownHandler, IP
     [SerializeField] private GameObject playArrow;
     [SerializeField] private GameObject invalidComboIndicator;
     [SerializeField] private float lerpFactor = 0.1f; // Lerp factor for smooth movement
+    [SerializeField, Range(0f, 1f), Tooltip("Scales vertical mouse movement for cards dragged from the score hand onto the table.")]
+    private float tableVerticalDragMultiplier = 0.5f;
 
     void Awake()
     {
@@ -191,9 +193,16 @@ public class CardMovement : MonoBehaviour, IDragHandler, IPointerDownHandler, IP
             }
 
             isDraggingPlayedCardToHand = false;
-            currentState = isPlayed || IsInScoringList() ? 4 : 2;
+            currentState = (isPlayed || IsInScoringList())
+                && (handManager == null || !handManager.IsZoomedIn)
+                ? 4
+                : 2;
             cardsBeingDragged.Add(this);
-            RectTransformUtility.ScreenPointToLocalPointInRectangle(dragPlane, eventData.position, eventData.pressEventCamera, out originalLocalPointerPosition);
+            RectTransformUtility.ScreenPointToLocalPointInRectangle(
+                dragPlane,
+                eventData.position,
+                ResolveEventCamera(eventData.pressEventCamera),
+                out originalLocalPointerPosition);
             originalPanelLocalPosition = rectTransform.localPosition;
         }
     }
@@ -271,36 +280,103 @@ public class CardMovement : MonoBehaviour, IDragHandler, IPointerDownHandler, IP
 
             wasDragged = true;
             Vector2 localPointerPosition;
-            if (RectTransformUtility.ScreenPointToLocalPointInRectangle(dragPlane, eventData.position, eventData.pressEventCamera, out localPointerPosition))
+            if (!RectTransformUtility.ScreenPointToLocalPointInRectangle(
+                dragPlane,
+                eventData.position,
+                ResolveEventCamera(eventData.pressEventCamera),
+                out localPointerPosition))
             {
-                if (currentState == 4)
+                return;
+            }
+
+            Vector2 pointerDelta = localPointerPosition - originalLocalPointerPosition;
+            Vector3 targetPosition = originalPanelLocalPosition + (Vector3)pointerDelta;
+            if (handManager != null && handManager.IsZoomedIn)
+            {
+                targetPosition.y = originalPanelLocalPosition.y
+                    + pointerDelta.y * Mathf.Clamp01(tableVerticalDragMultiplier);
+            }
+
+            rectTransform.localPosition = Vector3.Lerp(rectTransform.localPosition, targetPosition, lerpFactor);
+            if (handManager != null && handManager.IsZoomedIn)
+            {
+                return;
+            }
+
+            if (currentState == 4)
+            {
+                isDraggingPlayedCardToHand = scoreManager != null
+                    && !scoreManager.IsPointerInPlayArea(localPointerPosition, dragPlane);
+            }
+            else if (currentState == 2 && scoreManager != null
+                && scoreManager.IsPointerInPlayArea(localPointerPosition, dragPlane))
+            {
+                AddToPlayArea();
+                currentState = 3;
+                if (playArrow != null)
                 {
-                    Vector3 targetPosition = originalPanelLocalPosition + (Vector3)(localPointerPosition - originalLocalPointerPosition);
-                    rectTransform.localPosition = Vector3.Lerp(rectTransform.localPosition, targetPosition, lerpFactor);
-                    isDraggingPlayedCardToHand = scoreManager != null
-                        && !scoreManager.IsPointerInPlayArea(localPointerPosition, dragPlane);
+                    playArrow.SetActive(true);
                 }
-                else if (currentState == 2)
+            }
+            else if (currentState == 3 && scoreManager != null
+                && !scoreManager.IsPointerInPlayArea(localPointerPosition, dragPlane))
+            {
+                RemoveFromPlayArea();
+                currentState = 2;
+                if (playArrow != null)
                 {
-                    Vector3 targetPosition = originalPanelLocalPosition + (Vector3)(localPointerPosition - originalLocalPointerPosition);
-                    rectTransform.localPosition = Vector3.Lerp(rectTransform.localPosition, targetPosition, lerpFactor);
-                    if (scoreManager != null && scoreManager.IsPointerInPlayArea(localPointerPosition, dragPlane))
-                    {
-                        AddToPlayArea();
-                        currentState = 3;
-                        playArrow.SetActive(true);
-                    }
-                }
-                else if (scoreManager != null && !scoreManager.IsPointerInPlayArea(localPointerPosition, dragPlane))
-                {
-                    RemoveFromPlayArea();
-                    currentState = 2;
                     playArrow.SetActive(false);
-                    Vector3 targetPosition = originalPanelLocalPosition + (Vector3)(localPointerPosition - originalLocalPointerPosition);
-                    rectTransform.localPosition = Vector3.Lerp(rectTransform.localPosition, targetPosition, lerpFactor);
                 }
             }
         }
+    }
+
+    private Camera ResolveEventCamera(Camera eventCamera)
+    {
+        if (eventCamera != null)
+        {
+            return eventCamera;
+        }
+
+        Canvas activeCanvas = GetComponentInParent<Canvas>();
+        if (activeCanvas == null || activeCanvas.renderMode == RenderMode.ScreenSpaceOverlay)
+        {
+            return null;
+        }
+
+        if (activeCanvas.worldCamera != null)
+        {
+            return activeCanvas.worldCamera;
+        }
+
+        return Camera.main;
+    }
+
+    public void OnDrop(PointerEventData eventData)
+    {
+        if (handManager == null || !handManager.IsZoomedIn || eventData.pointerDrag == null)
+        {
+            return;
+        }
+
+        CardMovement draggedCard = eventData.pointerDrag.GetComponent<CardMovement>();
+        if (draggedCard == null || draggedCard == this)
+        {
+            return;
+        }
+
+        if (handManager.TryStageCardForCombo(draggedCard.gameObject, gameObject))
+        {
+            draggedCard.originalPosition = draggedCard.rectTransform.localPosition;
+            draggedCard.originalRotation = draggedCard.rectTransform.localRotation;
+            draggedCard.originalScale = draggedCard.rectTransform.localScale;
+        }
+    }
+
+    public void SetDragReturnPosition(Vector3 localPosition)
+    {
+        originalPosition = localPosition;
+        rectTransform.localPosition = localPosition;
     }
 
     private void HandleHoverState()

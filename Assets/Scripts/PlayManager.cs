@@ -16,15 +16,30 @@ public class PlayManager : MonoBehaviour
     private class PlayedCardSet
     {
         public List<GameObject> cards = new List<GameObject>();
+        public ComboType type = ComboType.Set;
+    }
+
+    private sealed class PendingCardPlacement
+    {
+        public GameObject card;
+        public Transform originalParent;
+        public Vector3 originalLocalPosition;
+        public Quaternion originalLocalRotation;
+        public Vector3 originalLocalScale;
+        public Vector3 zoomedInLocalPosition;
+        public PlayedCardSet targetSet;
     }
 
     public List<GameObject> cardsInPlay = new List<GameObject>();
     [SerializeField] private List<PlayedCardSet> playedCardSets = new List<PlayedCardSet>();
+    private readonly List<PendingCardPlacement> pendingCardPlacements = new List<PendingCardPlacement>();
+    private HandManager zoomedInHandManager;
 
     [Header("Card Layout")]
     [SerializeField] private ScoreManager scoreManager;
     [SerializeField] private Transform playedCardsParent;
     [SerializeField] private GameObject playPositionReference;
+    [SerializeField] private Transform zoomedInCardPositionReference;
     [SerializeField] private float fanSpread = 7.55f;
     [SerializeField] private float cardSpacing = 100f;
     [SerializeField] private float spaceBetweenCardSets = 250f;
@@ -43,6 +58,440 @@ public class PlayManager : MonoBehaviour
             UpdatePlayedCardPositions();
         }
     }
+
+        public bool BeginZoomedInView(HandManager handManager)
+        {
+            if (handManager == null)
+            {
+                Debug.LogError("Cannot enter the zoomed-in view: assign a HandManager.", this);
+                return false;
+            }
+
+            if (scoreManager == null)
+            {
+                Debug.LogError("Cannot move scoring-hand cards to the table: assign a ScoreManager in the PlayManager.", this);
+                return false;
+            }
+
+            if (playedCardsParent == null)
+            {
+                Debug.LogError("Cannot move scoring-hand cards to the table: assign a Played Cards Parent in the PlayManager.", this);
+                return false;
+            }
+
+            if (zoomedInCardPositionReference == null)
+            {
+                Debug.LogError("Cannot move scoring-hand cards to the table: assign a Zoomed In Card Position Reference.", this);
+                return false;
+            }
+
+            zoomedInHandManager = handManager;
+            List<GameObject> scoringCards = new List<GameObject>(scoreManager.cardsInPlay);
+            foreach (GameObject card in scoringCards)
+            {
+                if (card == null)
+                {
+                    continue;
+                }
+
+                PendingCardPlacement placement = new PendingCardPlacement
+                {
+                    card = card,
+                    originalParent = card.transform.parent,
+                    originalLocalPosition = card.transform.localPosition,
+                    originalLocalRotation = card.transform.localRotation,
+                    originalLocalScale = card.transform.localScale
+                };
+                pendingCardPlacements.Add(placement);
+                scoreManager.RemovePlayedCard(card);
+                card.transform.SetParent(playedCardsParent, false);
+                card.transform.SetAsLastSibling();
+            }
+
+            UpdateZoomedInCardPositions();
+            return true;
+        }
+
+        public void EndZoomedInView()
+        {
+            if (pendingCardPlacements.Count == 0)
+            {
+                zoomedInHandManager = null;
+                return;
+            }
+
+            CardMovement.HideInvalidComboIndicator();
+            foreach (PendingCardPlacement placement in pendingCardPlacements)
+            {
+                if (placement.card == null)
+                {
+                    continue;
+                }
+
+                if (scoreManager != null && !scoreManager.cardsInPlay.Contains(placement.card))
+                {
+                    scoreManager.AddPlayedCard(placement.card);
+                }
+
+                if (placement.originalParent == null)
+                {
+                    Debug.LogError($"Cannot restore {placement.card.name}: its original parent no longer exists.", placement.card);
+                    continue;
+                }
+
+                placement.card.transform.SetParent(placement.originalParent, false);
+                placement.card.transform.localPosition = placement.originalLocalPosition;
+                placement.card.transform.localRotation = placement.originalLocalRotation;
+                placement.card.transform.localScale = placement.originalLocalScale;
+            }
+
+            pendingCardPlacements.Clear();
+            zoomedInHandManager = null;
+        }
+
+        public bool TryStageCardForCombo(GameObject card, GameObject targetCard)
+        {
+            if (zoomedInHandManager == null || !zoomedInHandManager.IsZoomedIn)
+            {
+                return false;
+            }
+
+            PendingCardPlacement placement = pendingCardPlacements.Find(item => item.card == card);
+            if (placement == null || targetCard == null || card == targetCard)
+            {
+                return false;
+            }
+
+            PlayedCardSet targetSet = FindPlayedCardSet(targetCard);
+            if (targetSet == null)
+            {
+                PendingCardPlacement pendingTarget = pendingCardPlacements.Find(item => item.card == targetCard);
+                targetSet = pendingTarget != null ? pendingTarget.targetSet : null;
+            }
+
+            if (targetSet == null)
+            {
+                return false;
+            }
+
+            placement.targetSet = targetSet;
+            return true;
+        }
+
+        public void ValidateZoomedInCards(HandManager handManager)
+        {
+            if (handManager == null || handManager != zoomedInHandManager || !handManager.IsZoomedIn)
+            {
+                return;
+            }
+
+            CardMovement.HideInvalidComboIndicator();
+            if (pendingCardPlacements.Count == 0)
+            {
+                return;
+            }
+
+            List<GameObject> invalidCards = new List<GameObject>();
+            HashSet<PlayedCardSet> checkedSets = new HashSet<PlayedCardSet>();
+            foreach (PendingCardPlacement placement in pendingCardPlacements)
+            {
+                PlayedCardSet targetSet = placement.targetSet;
+                if (targetSet == null || !checkedSets.Add(targetSet))
+                {
+                    continue;
+                }
+
+                List<GameObject> cardsInCombo = new List<GameObject>(targetSet.cards);
+                foreach (PendingCardPlacement addition in pendingCardPlacements)
+                {
+                    if (addition.targetSet == targetSet && addition.card != null)
+                    {
+                        cardsInCombo.Add(addition.card);
+                    }
+                }
+
+                if (!IsValidCombo(cardsInCombo, targetSet.type, out ComboType validatedType))
+                {
+                    foreach (PendingCardPlacement addition in pendingCardPlacements)
+                    {
+                        if (addition.targetSet == targetSet && addition.card != null)
+                        {
+                            invalidCards.Add(addition.card);
+                        }
+                    }
+                }
+                else
+                {
+                    targetSet.type = validatedType;
+                }
+            }
+
+            List<GameObject> unassignedCards = new List<GameObject>();
+            foreach (PendingCardPlacement placement in pendingCardPlacements)
+            {
+                if (placement.targetSet == null && placement.card != null)
+                {
+                    unassignedCards.Add(placement.card);
+                }
+            }
+
+            if (unassignedCards.Count > 0)
+            {
+                invalidCards.AddRange(GetCardsNotInValidCombos(unassignedCards));
+            }
+
+            if (invalidCards.Count > 0)
+            {
+                ShowInvalidComboIndicators(invalidCards);
+                foreach (PendingCardPlacement placement in pendingCardPlacements)
+                {
+                    if (invalidCards.Contains(placement.card))
+                    {
+                        CardMovement movement = placement.card.GetComponent<CardMovement>();
+                        if (movement != null)
+                        {
+                            movement.SetDragReturnPosition(placement.zoomedInLocalPosition);
+                        }
+                        else
+                        {
+                            placement.card.transform.localPosition = placement.zoomedInLocalPosition;
+                        }
+
+                        placement.targetSet = null;
+                    }
+                }
+
+                return;
+            }
+
+            List<GameObject> unassignedValidCards = new List<GameObject>();
+            foreach (PendingCardPlacement placement in pendingCardPlacements)
+            {
+                if (placement.targetSet == null && placement.card != null)
+                {
+                    unassignedValidCards.Add(placement.card);
+                }
+            }
+
+            foreach (PendingCardPlacement placement in pendingCardPlacements)
+            {
+                if (placement.card == null)
+                {
+                    continue;
+                }
+
+                if (placement.targetSet != null)
+                {
+                    placement.targetSet.cards.Add(placement.card);
+                }
+
+                if (!cardsInPlay.Contains(placement.card))
+                {
+                    cardsInPlay.Add(placement.card);
+                }
+
+                CardMovement movement = placement.card.GetComponent<CardMovement>();
+                if (movement != null)
+                {
+                    movement.MarkAsPlayed(true);
+                }
+            }
+
+            if (unassignedValidCards.Count > 0)
+            {
+                PlayedCardSet newSet = new PlayedCardSet
+                {
+                    cards = unassignedValidCards,
+                    type = DetermineComboType(unassignedValidCards)
+                };
+                playedCardSets.Add(newSet);
+            }
+
+            int scoreToAdd = CalculateScoringHandScore(unassignedValidCards);
+            HashSet<PlayedCardSet> scoredSets = new HashSet<PlayedCardSet>();
+            foreach (PendingCardPlacement placement in pendingCardPlacements)
+            {
+                if (placement.targetSet != null && scoredSets.Add(placement.targetSet))
+                {
+                    scoreToAdd += CalculateAddedComboCardScore(placement.targetSet);
+                }
+            }
+
+            if (scoreManager != null)
+            {
+                scoreManager.AddToTotalScore(scoreToAdd);
+            }
+
+            pendingCardPlacements.Clear();
+            UpdatePlayedCardPositions();
+        }
+
+        private void UpdateZoomedInCardPositions()
+        {
+            Vector3 referencePosition = playedCardsParent.InverseTransformPoint(zoomedInCardPositionReference.position);
+            float centeredStart = (pendingCardPlacements.Count - 1) / 2f;
+            for (int i = 0; i < pendingCardPlacements.Count; i++)
+            {
+                PendingCardPlacement placement = pendingCardPlacements[i];
+                placement.zoomedInLocalPosition = referencePosition
+                    + Vector3.right * (cardSpacing * (i - centeredStart));
+                placement.card.transform.localPosition = placement.zoomedInLocalPosition;
+                placement.card.transform.localRotation = Quaternion.identity;
+                placement.card.transform.localScale = cardScale;
+            }
+        }
+
+        private PlayedCardSet FindPlayedCardSet(GameObject card)
+        {
+            foreach (PlayedCardSet set in playedCardSets)
+            {
+                if (set != null && set.cards != null && set.cards.Contains(card))
+                {
+                    return set;
+                }
+            }
+
+            return null;
+        }
+
+        private bool IsValidCombo(List<GameObject> cards, ComboType preferredType, out ComboType validatedType)
+        {
+            validatedType = preferredType;
+            List<CardInstance> instances = new List<CardInstance>(cards.Count);
+            foreach (GameObject card in cards)
+            {
+                if (!TryCreateCardInstance(card, out CardInstance instance))
+                {
+                    return false;
+                }
+
+                instances.Add(instance);
+            }
+
+            ComboValidationResult validation = comboValidator.CanCreateCombo(instances, preferredType, null);
+            if (validation.IsValid)
+            {
+                return true;
+            }
+
+            ComboType alternateType = preferredType == ComboType.Set ? ComboType.Straight : ComboType.Set;
+            validation = comboValidator.CanCreateCombo(instances, alternateType, null);
+            if (validation.IsValid)
+            {
+                validatedType = alternateType;
+                return true;
+            }
+
+            return false;
+        }
+
+        private int CalculateScoringHandScore(List<GameObject> cards)
+        {
+            if (cards.Count == 0)
+            {
+                return 0;
+            }
+
+            List<CardInstance> instances = new List<CardInstance>(cards.Count);
+            foreach (GameObject card in cards)
+            {
+                if (!TryCreateCardInstance(card, out CardInstance instance))
+                {
+                    return 0;
+                }
+
+                instances.Add(instance);
+            }
+
+            ComboValidationResult validation = comboValidator.CanCreateCombo(instances, ComboType.Set, null);
+            if (!validation.IsValid)
+            {
+                validation = comboValidator.CanCreateCombo(instances, ComboType.Straight, null);
+            }
+
+            int score = 0;
+            foreach (CardInstance card in instances)
+            {
+                score += validation.IsValid
+                    ? validation.ScoringContext.GetCardScore(card, instances)
+                    : card.EffectiveValue;
+            }
+
+            return score;
+        }
+
+        private int CalculateAddedComboCardScore(PlayedCardSet targetSet)
+        {
+            List<CardInstance> instances = new List<CardInstance>(targetSet.cards.Count);
+            foreach (GameObject card in targetSet.cards)
+            {
+                if (!TryCreateCardInstance(card, out CardInstance instance))
+                {
+                    return 0;
+                }
+
+                instances.Add(instance);
+            }
+
+            ComboValidationResult validation = comboValidator.CanCreateCombo(instances, targetSet.type, null);
+            if (!validation.IsValid)
+            {
+                ComboType alternateType = targetSet.type == ComboType.Set ? ComboType.Straight : ComboType.Set;
+                validation = comboValidator.CanCreateCombo(instances, alternateType, null);
+            }
+
+            if (!validation.IsValid)
+            {
+                Debug.LogError("Cannot calculate a played card's score: the updated table combo is invalid.", this);
+                return 0;
+            }
+
+            int score = 0;
+            foreach (PendingCardPlacement placement in pendingCardPlacements)
+            {
+                if (placement.targetSet != targetSet || placement.card == null)
+                {
+                    continue;
+                }
+
+                int cardIndex = targetSet.cards.IndexOf(placement.card);
+                if (cardIndex >= 0)
+                {
+                    score += validation.ScoringContext.GetCardScore(instances[cardIndex], instances);
+                }
+            }
+
+            return score;
+        }
+
+        private bool TryCreateCardInstance(GameObject card, out CardInstance instance)
+        {
+            CardDisplay display = card != null ? card.GetComponent<CardDisplay>() : null;
+            if (display == null || display.cardData == null)
+            {
+                Debug.LogError("Cannot process a table card: it is missing its CardDisplay or card data.", card);
+                instance = null;
+                return false;
+            }
+
+            Card definition = display.cardData;
+            instance = new CardInstance
+            {
+                InstanceId = card.GetInstanceID().ToString(),
+                Definition = definition,
+                Rank = definition.cardRank,
+                Suit = definition.suit != null && definition.suit.Count > 0 ? definition.suit[0] : default(Suit),
+                Type = definition.cardType != null && definition.cardType.Count > 0
+                    ? definition.cardType[0]
+                    : CardType.Number
+            };
+            return true;
+        }
+
+        private ComboType DetermineComboType(List<GameObject> cards)
+        {
+            return IsValidCombo(cards, ComboType.Set, out ComboType type) ? type : ComboType.Straight;
+        }
 
     public void PlaySelectedCards(HandManager handManager)
     {
@@ -332,6 +781,7 @@ public class PlayManager : MonoBehaviour
 
         if (newSet.cards.Count > 0)
         {
+            newSet.type = DetermineComboType(newSet.cards);
             playedCardSets.Add(newSet);
             if (scoreManager != null)
             {

@@ -849,6 +849,7 @@ MonoBehaviour:
   playArrow: {fileID: 2592339173933570343}
   invalidComboIndicator: {fileID: 1071433902378218144}
   lerpFactor: 0.1
+  tableVerticalDragMultiplier: 0.816
 --- !u!1 &5851691948694916218
 GameObject:
   m_ObjectHideFlags: 0

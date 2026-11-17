@@ -7,6 +7,13 @@ using System;
 
 public class HandManager : MonoBehaviour
 {
+    public enum HandViewState
+    {
+        Neutral,
+        ZoomedIn,
+        HandsHidden
+    }
+
     private struct ScoreCardCanvasGroupState
     {
         public CanvasGroup canvasGroup;
@@ -21,6 +28,17 @@ public class HandManager : MonoBehaviour
     private ScoreManager scoreManager;
     private GameController gameController;
     private bool handIsDown;
+    private CanvasGroup handCanvasGroup;
+    private float handCanvasGroupAlpha = 1f;
+    private bool handCanvasGroupInteractable = true;
+    private bool handCanvasGroupBlocksRaycasts = true;
+    private float targetHandCanvasGroupAlpha = 1f;
+    private Vector3 neutralCameraPosition;
+    private Quaternion neutralCameraRotation;
+    private Vector3 targetCameraPosition;
+    private Quaternion targetCameraRotation;
+    private Vector3 neutralHandPosition;
+    private HandViewState handViewState = HandViewState.Neutral;
 
     public DeckManager deckManager; //Reference to the DeckManager script
     [SerializeField] private PlayManager playManager;
@@ -35,10 +53,20 @@ public class HandManager : MonoBehaviour
     [SerializeField] private Vector3 handPositionDown = Vector3.zero;
     [SerializeField, Min(0f)] private float handPositionMoveSpeed = 8f;
     [SerializeField] private bool updateHandCardPositionsContinuously;
+    [SerializeField, Min(0.01f)] private float handFadeDuration = 0.25f;
+    [Header("Play View")]
+    [SerializeField] private Camera cameraToMove;
+    [SerializeField] private Transform zoomedInCameraPositionReference;
+    [SerializeField] private Vector3 zoomedInCameraPositionOffset;
+    [SerializeField, Min(0f)] private float cameraMoveSpeed = 3f;
+    [SerializeField] private bool updateZoomedInCameraPositionContinuously;
     public List<GameObject> cardsInHand = new List<GameObject>(); //Hold a list of card objects in hand
     
     private Vector3 targetHandPosition;
     public bool IsHandDown => handIsDown;
+    public bool IsZoomedIn => handViewState == HandViewState.ZoomedIn;
+    public HandViewState CurrentHandViewState => handViewState;
+    public PlayManager PlayManager => playManager;
 
     void Start()
     {
@@ -47,6 +75,27 @@ public class HandManager : MonoBehaviour
         if (handTransform != null)
         {
             targetHandPosition = handTransform.localPosition;
+            neutralHandPosition = handTransform.localPosition;
+            handCanvasGroup = handTransform.GetComponent<CanvasGroup>();
+            if (handCanvasGroup != null)
+            {
+                handCanvasGroupAlpha = handCanvasGroup.alpha;
+                handCanvasGroupInteractable = handCanvasGroup.interactable;
+                handCanvasGroupBlocksRaycasts = handCanvasGroup.blocksRaycasts;
+            }
+        }
+
+        if (cameraToMove == null)
+        {
+            cameraToMove = Camera.main;
+        }
+
+        if (cameraToMove != null)
+        {
+            neutralCameraPosition = cameraToMove.transform.position;
+            neutralCameraRotation = cameraToMove.transform.rotation;
+            targetCameraPosition = neutralCameraPosition;
+            targetCameraRotation = neutralCameraRotation;
         }
     }
 
@@ -120,12 +169,42 @@ public class HandManager : MonoBehaviour
     void Update()
     {
         UpdateHandPosition();
+        UpdateHandFade();
+        UpdateCameraPosition();
 
-        if (Input.GetKeyDown(KeyCode.UpArrow))
+        bool playPhase = gameController != null && gameController.CurrentPhase == TurnPhase.Play;
+        if (!playPhase && handViewState != HandViewState.Neutral)
+        {
+            SetHandViewState(HandViewState.Neutral);
+        }
+
+        if (playPhase && Input.GetKeyDown(KeyCode.UpArrow))
+        {
+            if (handViewState == HandViewState.Neutral)
+            {
+                SetHandViewState(HandViewState.ZoomedIn);
+            }
+            else
+            {
+                SetHandViewState(HandViewState.Neutral);
+            }
+        }
+        else if (playPhase && Input.GetKeyDown(KeyCode.DownArrow))
+        {
+            if (handViewState == HandViewState.Neutral)
+            {
+                SetHandViewState(HandViewState.HandsHidden);
+            }
+            else
+            {
+                SetHandViewState(HandViewState.Neutral);
+            }
+        }
+        else if (!playPhase && Input.GetKeyDown(KeyCode.UpArrow))
         {
             SetHandPosition(handPositionUp, false);
         }
-        else if (Input.GetKeyDown(KeyCode.DownArrow))
+        else if (!playPhase && Input.GetKeyDown(KeyCode.DownArrow))
         {
             SetHandPosition(handPositionDown, true);
         }
@@ -149,12 +228,21 @@ public class HandManager : MonoBehaviour
             }
         }
 
-        if (!handIsDown && Input.GetKeyDown(KeyCode.Space)
+        if (Input.GetKeyDown(KeyCode.Space)
             && (gameController == null || gameController.CurrentPhase == TurnPhase.Play))
         {
+            if (handViewState != HandViewState.ZoomedIn && handIsDown)
+            {
+                return;
+            }
+
             if (playManager == null)
             {
                 Debug.LogError("Cannot play selected cards: assign a PlayManager in the HandManager.", this);
+            }
+            else if (handViewState == HandViewState.ZoomedIn)
+            {
+                playManager.ValidateZoomedInCards(this);
             }
             else
             {
@@ -193,6 +281,176 @@ public class HandManager : MonoBehaviour
             SetHandCardMovementEnabled(true);
             RestoreScoreCards();
         }
+    }
+
+    private void SetHandViewState(HandViewState nextState)
+    {
+        if (nextState == handViewState)
+        {
+            return;
+        }
+
+        if (nextState == HandViewState.ZoomedIn)
+        {
+            if (playManager == null)
+            {
+                Debug.LogError("Cannot enter the zoomed-in view: assign a PlayManager in the HandManager.", this);
+                return;
+            }
+
+            if (cameraToMove == null || zoomedInCameraPositionReference == null)
+            {
+                Debug.LogError("Cannot enter the zoomed-in view: assign the camera and zoom position reference.", this);
+                return;
+            }
+
+            if (!playManager.BeginZoomedInView(this))
+            {
+                return;
+            }
+        }
+        else if (handViewState == HandViewState.ZoomedIn && playManager != null)
+        {
+            playManager.EndZoomedInView();
+        }
+
+        handViewState = nextState;
+        handIsDown = handViewState != HandViewState.Neutral;
+        if (handViewState == HandViewState.Neutral)
+        {
+            targetHandPosition = neutralHandPosition;
+            targetCameraPosition = neutralCameraPosition;
+            targetCameraRotation = neutralCameraRotation;
+            RestoreHandVisibility();
+            RestoreScoreCards();
+            SetHandCardMovementEnabled(true);
+            return;
+        }
+
+        HideHandCards();
+        FadeScoreCards(0f);
+        SetHandCardMovementEnabled(false);
+        if (handViewState == HandViewState.ZoomedIn)
+        {
+            UpdateCameraTargetFromReference();
+        }
+    }
+
+    private void HideHandCards()
+    {
+        if (handTransform == null)
+        {
+            Debug.LogError("Cannot hide the hand: assign a Hand Transform in the HandManager.", this);
+            return;
+        }
+
+        if (handCanvasGroup == null)
+        {
+            handCanvasGroup = handTransform.GetComponent<CanvasGroup>();
+            if (handCanvasGroup == null)
+            {
+                handCanvasGroup = handTransform.gameObject.AddComponent<CanvasGroup>();
+            }
+
+            handCanvasGroupAlpha = handCanvasGroup.alpha;
+            handCanvasGroupInteractable = handCanvasGroup.interactable;
+            handCanvasGroupBlocksRaycasts = handCanvasGroup.blocksRaycasts;
+        }
+
+        targetHandCanvasGroupAlpha = 0f;
+        handCanvasGroup.interactable = false;
+        handCanvasGroup.blocksRaycasts = false;
+    }
+
+    private void RestoreHandVisibility()
+    {
+        if (handCanvasGroup == null)
+        {
+            return;
+        }
+
+        targetHandCanvasGroupAlpha = handCanvasGroupAlpha;
+        if (Mathf.Approximately(handCanvasGroup.alpha, targetHandCanvasGroupAlpha))
+        {
+            handCanvasGroup.interactable = handCanvasGroupInteractable;
+            handCanvasGroup.blocksRaycasts = handCanvasGroupBlocksRaycasts;
+        }
+        else
+        {
+            handCanvasGroup.interactable = false;
+            handCanvasGroup.blocksRaycasts = false;
+        }
+    }
+
+    private void UpdateHandFade()
+    {
+        if (handCanvasGroup == null)
+        {
+            return;
+        }
+
+        float fadeSpeed = 1f / Mathf.Max(0.01f, handFadeDuration);
+        handCanvasGroup.alpha = Mathf.MoveTowards(
+            handCanvasGroup.alpha,
+            targetHandCanvasGroupAlpha,
+            fadeSpeed * Time.deltaTime);
+
+        if (Mathf.Approximately(handCanvasGroup.alpha, targetHandCanvasGroupAlpha))
+        {
+            handCanvasGroup.interactable = targetHandCanvasGroupAlpha > 0f && handCanvasGroupInteractable;
+            handCanvasGroup.blocksRaycasts = targetHandCanvasGroupAlpha > 0f && handCanvasGroupBlocksRaycasts;
+        }
+    }
+
+    private void UpdateCameraPosition()
+    {
+        if (cameraToMove == null)
+        {
+            return;
+        }
+
+        if (handViewState == HandViewState.ZoomedIn && updateZoomedInCameraPositionContinuously)
+        {
+            UpdateCameraTargetFromReference();
+        }
+
+        if (cameraMoveSpeed <= 0f)
+        {
+            cameraToMove.transform.SetPositionAndRotation(targetCameraPosition, targetCameraRotation);
+            return;
+        }
+
+        float interpolation = 1f - Mathf.Exp(-cameraMoveSpeed * Time.deltaTime);
+        cameraToMove.transform.position = Vector3.Lerp(
+            cameraToMove.transform.position,
+            targetCameraPosition,
+            interpolation);
+        cameraToMove.transform.rotation = Quaternion.Slerp(
+            cameraToMove.transform.rotation,
+            targetCameraRotation,
+            interpolation);
+    }
+
+    private void UpdateCameraTargetFromReference()
+    {
+        if (zoomedInCameraPositionReference == null)
+        {
+            return;
+        }
+
+        targetCameraPosition = zoomedInCameraPositionReference.TransformPoint(zoomedInCameraPositionOffset);
+        targetCameraRotation = zoomedInCameraPositionReference.rotation;
+    }
+
+    public bool TryStageCardForCombo(GameObject card, GameObject targetCard)
+    {
+        if (playManager == null)
+        {
+            Debug.LogError("Cannot add a card to a table combo: assign a PlayManager in the HandManager.", this);
+            return false;
+        }
+
+        return playManager.TryStageCardForCombo(card, targetCard);
     }
 
     private void UpdateHandPosition()
@@ -245,7 +503,7 @@ public class HandManager : MonoBehaviour
         }
     }
 
-    private void FadeScoreCards()
+    private void FadeScoreCards(float alpha = -1f)
     {
         if (scoreManager == null)
         {
@@ -278,7 +536,7 @@ public class HandManager : MonoBehaviour
                 interactable = canvasGroup.interactable,
                 blocksRaycasts = canvasGroup.blocksRaycasts
             });
-            canvasGroup.alpha = scoreManager.ScoreCardsAlphaWhenHandDown;
+            canvasGroup.alpha = alpha < 0f ? scoreManager.ScoreCardsAlphaWhenHandDown : alpha;
             canvasGroup.interactable = false;
             canvasGroup.blocksRaycasts = false;
         }
