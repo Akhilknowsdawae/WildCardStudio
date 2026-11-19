@@ -17,8 +17,8 @@ namespace WildCardStudio
     [Serializable]
     public sealed class EnemyAISettings
     {
-        [Min(1)] public int futureDrawHorizon = 2;
-        [Min(0f)] public float immediatePointsWeight = 1f;
+        [Min(1)] public int futureDrawHorizon = 2; 
+        [Min(0f)] public float immediatePointsWeight = 1f; 
         [Min(0f)] public float futurePointsWeight = 1f;
         [Min(0f)] public float opportunityCostWeight = 1f;
         [Min(0f)] public float cardRetentionWeight = 0.05f;
