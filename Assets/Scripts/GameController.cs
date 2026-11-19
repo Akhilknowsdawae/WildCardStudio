@@ -6,6 +6,7 @@ using UnityEngine;
 
 namespace WildCardStudio
 {
+    /// Coordinates turns, phases, combo validation, scoring, events, and match completion.
     public class GameController : MonoBehaviour
     {
         [Header("Players")]
@@ -46,8 +47,10 @@ namespace WildCardStudio
         public EventDispatcher Events => eventDispatcher;
         public IReadOnlyList<PlayerState> Players => players;
         public IReadOnlyList<Combo> ActiveCombos => activeCombos;
+        /// Starting hand size used when a match initializes.
         public int StartingHandSize => Mathf.Max(0, startingHandSize);
 
+        /// Initializes turn systems before scene objects begin interacting.
         private void Awake()
         {
             if (eventDispatcher == null)
@@ -63,6 +66,7 @@ namespace WildCardStudio
             UpdatePhaseDisplay();
         }
 
+        /// Handles Enter and Space shortcuts for advancing or completing the discard phase.
         private void Update()
         {
             if (currentPhase == TurnPhase.Discard && Input.GetKeyDown(KeyCode.Space))
@@ -104,6 +108,7 @@ namespace WildCardStudio
             }
         }
 
+        /// Resets match state and initializes the supplied player list.
         public void InitializeMatch(List<PlayerState> startingPlayers)
         {
             players = startingPlayers ?? new List<PlayerState>();
@@ -138,6 +143,7 @@ namespace WildCardStudio
             eventDispatcher.Publish(new MatchStartedEvent(players));
         }
 
+        /// Starts a new turn for the active player.
         public void StartTurn()
         {
             if (matchEnded)
@@ -151,6 +157,7 @@ namespace WildCardStudio
             ResolveTurnBasedEffects();
         }
 
+        /// Advances through draw, play, discard, resolution, and game-over phases.
         public void AdvancePhase()
         {
             if (matchEnded)
@@ -183,6 +190,7 @@ namespace WildCardStudio
             eventDispatcher.Publish(new PhaseChangedEvent(currentPhase, ActivePlayer, currentTurnNumber));
         }
 
+        /// Attempts to enter the discard phase from the current phase.
         public bool EnterDiscardPhase()
         {
             if (matchEnded)
@@ -206,6 +214,7 @@ namespace WildCardStudio
             return true;
         }
 
+        /// Draws a card for a player from either the deck or discard pile.
         public bool DrawCardFromDeck(PlayerState player, bool fromDiscard)
         {
             if (matchEnded || player == null || player != ActivePlayer)
@@ -229,6 +238,7 @@ namespace WildCardStudio
             return true;
         }
 
+        /// Creates a combo after validating the cards, player, and active turn state.
         public ComboValidationResult TryCreateCombo(PlayerState player, List<CardInstance> cards, ComboType comboType)
         {
             if (matchEnded)
@@ -264,6 +274,7 @@ namespace WildCardStudio
             return validation;
         }
 
+        /// Attempts to add a card to an existing combo.
         public ComboValidationResult TryAddCardToCombo(PlayerState player, Combo combo, CardInstance card)
         {
             if (matchEnded)
@@ -305,6 +316,7 @@ namespace WildCardStudio
             return validation;
         }
 
+        /// Discards a card instance from the supplied player's hand.
         public void DiscardCard(PlayerState player, CardInstance card)
         {
             if (matchEnded || player == null || player != ActivePlayer)
@@ -327,6 +339,7 @@ namespace WildCardStudio
             CheckWinConditionAfterAction(player);
         }
 
+        /// Resolves end-of-turn effects and advances to the next player.
         public void ResolveTurnEnd()
         {
             if (matchEnded)
@@ -346,6 +359,7 @@ namespace WildCardStudio
             eventDispatcher.Publish(new TurnResolvedEvent(ActivePlayer, currentTurnNumber));
         }
 
+        /// Ends the match and publishes the match-ended event.
         public void ResolveMatchEnd()
         {
             if (matchEnded)
@@ -374,6 +388,7 @@ namespace WildCardStudio
             eventDispatcher.Publish(new MatchEndedEvent(winner, players, activeCombos));
         }
 
+        /// Updates the Unity text that describes the current phase.
         private void UpdatePhaseDisplay()
         {
             if (phaseDisplayText == null)
@@ -392,6 +407,7 @@ namespace WildCardStudio
             };
         }
 
+        /// Revalidates an existing combo and updates its validity and lock state.
         public void RevalidateCombo(Combo combo)
         {
             if (combo == null)
@@ -411,6 +427,7 @@ namespace WildCardStudio
                 : 0f;
         }
 
+        /// Calculates the final score for a combo.
         public float CalculateComboScore(Combo combo)
         {
             if (combo == null || combo.Cards == null || combo.Cards.Count == 0)
@@ -433,6 +450,7 @@ namespace WildCardStudio
             return CalculateComboScore(combo, validation.ScoringContext);
         }
 
+        /// Applies the configured base score multiplier to a validated combo.
         private float CalculateComboScore(Combo combo, ComboScoringContext scoringContext)
         {
             float baseScore = combo.Cards.Sum(card => scoringContext.GetCardScore(card, combo.Cards));
@@ -445,6 +463,7 @@ namespace WildCardStudio
             return baseScore * flushMultiplier * baseScoreMultiplier;
         }
 
+        /// Evaluates win conditions after an action changes match state.
         public void CheckWinConditionAfterAction(PlayerState player)
         {
             if (player == null || player.Hand == null)
@@ -458,6 +477,7 @@ namespace WildCardStudio
             }
         }
 
+        /// Advances the active-player index and starts that player's turn.
         public void AdvanceToNextPlayer()
         {
             if (players == null || players.Count == 0)
@@ -469,6 +489,7 @@ namespace WildCardStudio
             eventDispatcher.Publish(new ActivePlayerChangedEvent(ActivePlayer, activePlayerIndex));
         }
 
+        /// Resolves turn-start and turn-end status effects.
         private void ResolveTurnBasedEffects()
         {
             var player = ActivePlayer;
@@ -486,6 +507,7 @@ namespace WildCardStudio
             }
         }
 
+        /// Draws and creates an instance from the next card in the deck.
         private CardInstance DrawFromDeck()
         {
             return new CardInstance
@@ -497,6 +519,7 @@ namespace WildCardStudio
             };
         }
 
+        /// Returns the top card from the discard pile.
         private CardInstance DrawFromDiscardPile()
         {
             return new CardInstance
@@ -508,6 +531,7 @@ namespace WildCardStudio
             };
         }
 
+        /// Determines the winning player or returns null if none has won.
         private PlayerState DetermineWinner()
         {
             if (players == null || players.Count == 0)
@@ -523,6 +547,7 @@ namespace WildCardStudio
 
     public sealed class MatchStartedEvent
     {
+        /// Players included in the newly initialized match.
         public List<PlayerState> Players { get; }
 
         public MatchStartedEvent(List<PlayerState> players)
@@ -533,7 +558,9 @@ namespace WildCardStudio
 
     public sealed class TurnStartedEvent
     {
+        /// Player whose turn is starting.
         public PlayerState Player { get; }
+        /// Current turn number.
         public int TurnNumber { get; }
 
         public TurnStartedEvent(PlayerState player, int turnNumber)
@@ -545,8 +572,11 @@ namespace WildCardStudio
 
     public sealed class PhaseChangedEvent
     {
+        /// New turn phase.
         public TurnPhase Phase { get; }
+        /// Player affected by the phase change.
         public PlayerState Player { get; }
+        /// Current turn number.
         public int TurnNumber { get; }
 
         public PhaseChangedEvent(TurnPhase phase, PlayerState player, int turnNumber)
@@ -559,8 +589,11 @@ namespace WildCardStudio
 
     public sealed class CardDrawnEvent
     {
+        /// Player who drew the card.
         public PlayerState Player { get; }
+        /// Card instance that was drawn.
         public CardInstance Card { get; }
+        /// True when the card came from the discard pile.
         public bool FromDiscard { get; }
 
         public CardDrawnEvent(PlayerState player, CardInstance card, bool fromDiscard)
@@ -573,7 +606,9 @@ namespace WildCardStudio
 
     public sealed class ComboCreatedEvent
     {
+        /// Newly created combo.
         public Combo Combo { get; }
+        /// Player who created the combo.
         public PlayerState Player { get; }
 
         public ComboCreatedEvent(Combo combo, PlayerState player)
@@ -585,8 +620,11 @@ namespace WildCardStudio
 
     public sealed class ComboModifiedEvent
     {
+        /// Modified combo.
         public Combo Combo { get; }
+        /// Player who modified the combo.
         public PlayerState Player { get; }
+        /// Card added to the combo.
         public CardInstance Card { get; }
 
         public ComboModifiedEvent(Combo combo, PlayerState player, CardInstance card)
@@ -599,7 +637,9 @@ namespace WildCardStudio
 
     public sealed class CardDiscardedEvent
     {
+        /// Player discarding the card.
         public PlayerState Player { get; }
+        /// Card instance being discarded.
         public CardInstance Card { get; }
 
         public CardDiscardedEvent(PlayerState player, CardInstance card)
@@ -611,7 +651,9 @@ namespace WildCardStudio
 
     public sealed class ActivePlayerChangedEvent
     {
+        /// Newly active player.
         public PlayerState Player { get; }
+        /// Index of the active player.
         public int PlayerIndex { get; }
 
         public ActivePlayerChangedEvent(PlayerState player, int playerIndex)
@@ -623,7 +665,9 @@ namespace WildCardStudio
 
     public sealed class TurnResolvedEvent
     {
+        /// Player whose turn was resolved.
         public PlayerState Player { get; }
+        /// Resolved turn number.
         public int TurnNumber { get; }
 
         public TurnResolvedEvent(PlayerState player, int turnNumber)
@@ -635,8 +679,11 @@ namespace WildCardStudio
 
     public sealed class MatchEndedEvent
     {
+        /// Winner of the match, or null if no winner was determined.
         public PlayerState Winner { get; }
+        /// All players that participated.
         public List<PlayerState> Players { get; }
+        /// Combos active when the match ended.
         public List<Combo> Combos { get; }
 
         public MatchEndedEvent(PlayerState winner, List<PlayerState> players, List<Combo> combos)

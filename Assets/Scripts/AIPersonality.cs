@@ -3,6 +3,7 @@ using UnityEngine;
 
 namespace WildCardStudio
 {
+    /// Defines the strategic tendencies that modify base enemy AI settings.
     public enum EnemyAIBehavior
     {
         Balanced,
@@ -11,12 +12,16 @@ namespace WildCardStudio
         Opportunistic
     }
 
+    /// Selects an enemy behavior and controls how strongly it changes the base settings.
     [Serializable]
     public sealed class AIPersonality
     {
+        /// The strategic behavior to apply to the enemy AI.
         public EnemyAIBehavior behavior = EnemyAIBehavior.Balanced;
+        /// Controls how strongly the selected behavior modifies its weights.
         [Range(0f, 1f)] public float behaviorStrength = 1f;
 
+        /// Produces a copy of the base settings modified for this personality.
         public EnemyAISettings ApplyTo(EnemyAISettings baseSettings)
         {
             if (baseSettings == null)
@@ -41,6 +46,7 @@ namespace WildCardStudio
             float opportunityMultiplier = 1f;
             float retentionMultiplier = 1f;
             float discardMultiplier = 1f;
+            // Each behavior changes a small set of weights in the opposite direction of its tendency.
             switch (behavior)
             {
                 case EnemyAIBehavior.Aggressive:

@@ -5,10 +5,14 @@ using UnityEngine;
 
 namespace WildCardStudio
 {
+    /// Summarizes the currently available combo and future value of a hand.
     public sealed class EnemyAIHandAnalysis
     {
+        /// Valid combos currently available in the analyzed hand.
         public IReadOnlyList<EnemyAIAction> AvailableCombos { get; }
+        /// Highest immediate score obtainable from the hand.
         public float BestImmediatePoints { get; }
+        /// Probability-weighted future value estimated from unseen cards.
         public float ExpectedFuturePoints { get; }
 
         internal EnemyAIHandAnalysis(
@@ -22,6 +26,7 @@ namespace WildCardStudio
         }
     }
 
+    /// Scores existing combos and estimates the future value of hand and draw opportunities.
     public sealed class ComboEvaluator
     {
         private readonly HandAnalyzer handAnalyzer;
@@ -42,6 +47,7 @@ namespace WildCardStudio
             this.settings = settings ?? throw new ArgumentNullException(nameof(settings));
         }
 
+        /// Finds all valid combos and estimates future opportunities for the supplied hand.
         public EnemyAIHandAnalysis Analyze(
             IReadOnlyList<CardInstance> hand,
             IReadOnlyList<CardInstance> unseenCards)
@@ -70,12 +76,14 @@ namespace WildCardStudio
             return new EnemyAIHandAnalysis(combos, bestImmediatePoints, futurePoints);
         }
 
+        /// Converts valid current-hand combos into ranked play actions.
         public IReadOnlyList<EnemyAIAction> EvaluatePlayActions(
             EnemyAIHandAnalysis currentHand,
             IReadOnlyList<CardInstance> hand,
             IReadOnlyList<CardInstance> unseenCards)
         {
             List<EnemyAIAction> actions = new List<EnemyAIAction>();
+            // No play candidates can be built without an existing analysis or hand.
             if (currentHand == null || hand == null)
             {
                 return actions;
@@ -83,6 +91,7 @@ namespace WildCardStudio
 
             foreach (EnemyAIAction combo in currentHand.AvailableCombos)
             {
+                // Remove committed cards from a copy of the hand before evaluating what remains.
                 HashSet<CardInstance> committedCards = new HashSet<CardInstance>(combo.Cards);
                 List<CardInstance> remainingHand = hand
                     .Where(card => card != null && !committedCards.Contains(card))
@@ -110,8 +119,10 @@ namespace WildCardStudio
             return actions;
         }
 
+        /// Calculates the validator-aware score for a valid set or straight.
         public float CalculateComboScore(IReadOnlyList<CardInstance> cards, ComboType type)
         {
+            // Only valid combos receive a score.
             ComboValidationResult validation = validator.CanCreateCombo(cards, type, null);
             if (!validation.IsValid)
             {

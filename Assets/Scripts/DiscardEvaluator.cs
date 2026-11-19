@@ -5,6 +5,7 @@ using UnityEngine;
 
 namespace WildCardStudio
 {
+    /// Estimates the cost of discarding each card in the enemy hand.
     public sealed class DiscardEvaluator
     {
         private readonly EnemyAISettings settings;
@@ -16,12 +17,14 @@ namespace WildCardStudio
             this.comboEvaluator = comboEvaluator ?? throw new ArgumentNullException(nameof(comboEvaluator));
         }
 
+        /// Builds one negative-value discard candidate for each card in the hand.
         public IReadOnlyList<EnemyAIAction> Evaluate(
             IReadOnlyList<CardInstance> hand,
             IReadOnlyList<CardInstance> unseenCards,
             EnemyAIHandAnalysis currentHand)
         {
             List<EnemyAIAction> actions = new List<EnemyAIAction>();
+            // A discard decision requires both a valid hand and baseline hand analysis.
             if (hand == null || currentHand == null || comboEvaluator == null)
             {
                 return actions;
@@ -34,6 +37,7 @@ namespace WildCardStudio
                     continue;
                 }
 
+                // Measure the hand's lost immediate and future points after removing this card.
                 List<CardInstance> remainingHand = hand.Where(handCard => handCard != card).ToList();
                 EnemyAIHandAnalysis afterDiscard = comboEvaluator.Analyze(remainingHand, unseenCards);
                 float lostImmediatePoints = Mathf.Max(

@@ -5,6 +5,7 @@ using UnityEngine;
 
 namespace WildCardStudio
 {
+    /// Estimates the value of drawing from the deck or taking the top discard.
     public sealed class DrawEvaluator
     {
         private readonly EnemyAISettings settings;
@@ -16,6 +17,7 @@ namespace WildCardStudio
             this.comboEvaluator = comboEvaluator ?? throw new ArgumentNullException(nameof(comboEvaluator));
         }
 
+        /// Builds deck-draw and discard-pickup candidates for the supplied hand.
         public IReadOnlyList<EnemyAIAction> Evaluate(
             IReadOnlyList<CardInstance> hand,
             IReadOnlyList<CardInstance> unseenCards,
@@ -23,6 +25,7 @@ namespace WildCardStudio
             EnemyAIHandAnalysis currentHand)
         {
             List<EnemyAIAction> actions = new List<EnemyAIAction>();
+            // Drawing is only evaluable when the hand and current analysis exist.
             if (hand == null || currentHand == null || comboEvaluator == null)
             {
                 return actions;
@@ -31,6 +34,7 @@ namespace WildCardStudio
             List<CardInstance> drawPool = GetUnseenCards(hand, unseenCards);
             if (drawPool.Count > 0)
             {
+                // Average the projected hand improvements across every possible deck draw.
                 float expectedImmediatePoints = 0f;
                 float expectedFuturePoints = 0f;
                 foreach (CardInstance drawCard in drawPool)
@@ -62,6 +66,7 @@ namespace WildCardStudio
 
             if (discardTop != null)
             {
+                // Evaluate pickup separately because the discard card is known, not probabilistic.
                 List<CardInstance> nextHand = new List<CardInstance>(hand) { discardTop };
                 EnemyAIHandAnalysis afterPickup = comboEvaluator.Analyze(nextHand, drawPool);
                 float immediateGain = Mathf.Max(

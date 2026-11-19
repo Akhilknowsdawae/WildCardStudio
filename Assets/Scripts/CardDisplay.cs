@@ -5,16 +5,23 @@ using TMPro;
 using UnityEngine.UI;
 using LifeAfter;
 
+/// Displays a Card data asset on a card UI object.
 public class CardDisplay : MonoBehaviour
 {
+    /// Source card data rendered by this component.
     public Card cardData;
 
+    /// Image used for the card artwork.
     public Image cardImage;
+    /// Text used for the card rank or special rank letter.
     public TMP_Text rankText;
+    /// Suit indicator images, ordered by Suit enum value.
     public Image[] typeImages;
 
+    /// Stores the artwork fallback displayed when the card has no image.
     private Sprite defaultCardSprite;
 
+    /// Captures the default artwork before card data is assigned.
     private void Awake()
     {
         if (cardImage != null)
@@ -23,11 +30,13 @@ public class CardDisplay : MonoBehaviour
         }
     }
 
+    /// Performs the initial UI update after Unity initializes the component.
     private void Start()
     {
         UpdateCardDisplay();
     }
 
+    /// Refreshes the card image, rank, and all suit indicators.
     public void UpdateCardDisplay()
     {
         if (cardImage != null)
@@ -45,6 +54,7 @@ public class CardDisplay : MonoBehaviour
         UpdateSuitImages();
     }
 
+    /// Returns the displayed rank text for the assigned card.
     private string GetDisplayedRank()
     {
         if (cardData == null)
@@ -73,6 +83,7 @@ public class CardDisplay : MonoBehaviour
         return cardData.cardRank.ToString();
     }
 
+    /// Updates which suit indicators are visible for the assigned card.
     public void UpdateSuitImages()
     {
         if (typeImages == null)

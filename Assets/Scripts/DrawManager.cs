@@ -3,6 +3,7 @@ using UnityEngine.EventSystems;
 using LifeAfter;
 using WildCardStudio;
 
+/// Handles pointer hover and mouse input for drawing cards from the deck.
 public class DrawManager : MonoBehaviour
 {
     [SerializeField] private GameObject drawObject;
@@ -17,6 +18,7 @@ public class DrawManager : MonoBehaviour
     private Vector3 drawObjectOriginalLocalPosition;
     private Camera mainCamera;
 
+    /// Saves the draw object's resting position.
     private void Awake()
     {
         if (drawObject != null)
@@ -25,6 +27,7 @@ public class DrawManager : MonoBehaviour
         }
     }
 
+    /// Resolves scene references used for input and turn validation.
     private void Start()
     {
         mainCamera = Camera.main;
@@ -49,6 +52,7 @@ public class DrawManager : MonoBehaviour
         }
     }
 
+    /// Updates hover feedback and executes a draw click when the turn permits it.
     private void Update()
     {
         bool pointerOverUI = EventSystem.current != null && EventSystem.current.IsPointerOverGameObject();
@@ -86,6 +90,7 @@ public class DrawManager : MonoBehaviour
         DrawCards();
     }
 
+    /// Checks whether card interaction is blocked by phase or active UI state.
     private bool IsCardInteractionActive()
     {
         if (gameController == null)
@@ -134,6 +139,7 @@ public class DrawManager : MonoBehaviour
         return false;
     }
 
+    /// Returns whether the pointer ray intersects the assigned draw object.
     private bool IsPointerOverDrawObject()
     {
         if (drawObject == null)
@@ -156,6 +162,7 @@ public class DrawManager : MonoBehaviour
             && (hit.transform == drawObject.transform || hit.transform.IsChildOf(drawObject.transform));
     }
 
+    /// Moves the draw object upward while hovered and eases it back when idle.
     private void UpdateDrawObjectPosition(bool isHovering)
     {
         if (drawObject == null)
@@ -177,6 +184,7 @@ public class DrawManager : MonoBehaviour
                 1f - Mathf.Exp(-hoverMoveSpeed * Time.deltaTime));
     }
 
+    /// Validates the turn state and requests the configured number of deck draws.
     private void DrawCards()
     {
         if (gameController == null)

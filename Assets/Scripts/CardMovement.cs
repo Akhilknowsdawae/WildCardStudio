@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using LifeAfter;
 using WildCardStudio;
 
+/// Handles card hover, selection, drag, play, discard, and return-to-hand interactions.
 public class CardMovement : MonoBehaviour, IDragHandler, IDropHandler, IPointerDownHandler, IPointerEnterHandler, IPointerExitHandler, IPointerClickHandler
 {
     private static readonly List<CardMovement> cardsInPlay = new List<CardMovement>();
@@ -29,6 +30,7 @@ public class CardMovement : MonoBehaviour, IDragHandler, IDropHandler, IPointerD
     private bool isDraggingPlayedCardToHand;
 
     public bool IsSelected => isSelected;
+    /// True while any card is currently being dragged.
     public static bool IsAnyCardBeingDragged => cardsBeingDragged.Count > 0;
 
     [SerializeField] private float selectScale = 1.2f; // Scale when selected
@@ -39,6 +41,7 @@ public class CardMovement : MonoBehaviour, IDragHandler, IDropHandler, IPointerD
     [SerializeField, Range(0f, 1f), Tooltip("Scales vertical mouse movement for cards dragged from the score hand onto the table.")]
     private float tableVerticalDragMultiplier = 0.5f;
 
+    /// Caches scene components and the card's initial transform.
     void Awake()
     {
         rectTransform = GetComponent<RectTransform>();
@@ -59,6 +62,7 @@ public class CardMovement : MonoBehaviour, IDragHandler, IDropHandler, IPointerD
         }
     }
 
+    /// Displays invalid-combo feedback for this card.
     public bool ShowInvalidComboIndicator()
     {
         if (invalidComboIndicator == null)
@@ -75,6 +79,7 @@ public class CardMovement : MonoBehaviour, IDragHandler, IDropHandler, IPointerD
         return true;
     }
 
+    /// Hides invalid-combo feedback owned by this card.
     public void HideOwnInvalidComboIndicator()
     {
         cardsWithActiveInvalidComboIndicators.Remove(this);
@@ -84,6 +89,7 @@ public class CardMovement : MonoBehaviour, IDragHandler, IDropHandler, IPointerD
         }
     }
 
+    /// Clears invalid-combo feedback from every tracked card.
     public static void HideInvalidComboIndicator()
     {
         foreach (CardMovement card in cardsWithActiveInvalidComboIndicators)
@@ -97,6 +103,7 @@ public class CardMovement : MonoBehaviour, IDragHandler, IDropHandler, IPointerD
         cardsWithActiveInvalidComboIndicators.Clear();
     }
 
+    /// Handles hover, drag, play, and return state transitions.
     void Update()
     {
         switch(currentState)
@@ -127,6 +134,7 @@ public class CardMovement : MonoBehaviour, IDragHandler, IDropHandler, IPointerD
         }
     }
 
+    /// Resets the card to its normal or selected transform state.
     private void TransitionToState0()
     {
         cardsBeingDragged.Remove(this);
@@ -145,6 +153,7 @@ public class CardMovement : MonoBehaviour, IDragHandler, IDropHandler, IPointerD
         }
     }
 
+    /// Stores the card's transform and enters hover state.
     public void OnPointerEnter(PointerEventData eventData)
     {
         if (currentState == 0 && !isLockedInPlay) // Only transition to hovered state if currently in normal state
@@ -157,6 +166,7 @@ public class CardMovement : MonoBehaviour, IDragHandler, IDropHandler, IPointerD
         }
     }
 
+    /// Leaves hover state unless the card remains selected.
     public void OnPointerExit(PointerEventData eventData)
     {
         if (currentState == 1 && !isSelected) // Keep selected cards highlighted after the pointer leaves
@@ -166,6 +176,7 @@ public class CardMovement : MonoBehaviour, IDragHandler, IDropHandler, IPointerD
         }
     }
 
+    /// Starts selection or drag behavior when the pointer presses this card.
     public void OnPointerDown(PointerEventData eventData)
     {
         if (currentState == 1 && !isLockedInPlay)
@@ -211,6 +222,7 @@ public class CardMovement : MonoBehaviour, IDragHandler, IDropHandler, IPointerD
         }
     }
 
+    /// Toggles selection when the pointer click completes without dragging.
     public void OnPointerClick(PointerEventData eventData)
     {
         if (isLockedInPlay || wasDragged)
@@ -263,6 +275,7 @@ public class CardMovement : MonoBehaviour, IDragHandler, IDropHandler, IPointerD
         }
     }
 
+    /// Moves the card while it is being dragged.
     public void OnDrag(PointerEventData eventData)
     {
         if (gameController == null)
@@ -334,6 +347,7 @@ public class CardMovement : MonoBehaviour, IDragHandler, IDropHandler, IPointerD
         }
     }
 
+    /// Processes the card's drop target and commits or rejects the move.
     public void OnDrop(PointerEventData eventData)
     {
         if (handManager == null || !handManager.IsZoomedIn || eventData.pointerDrag == null)
@@ -359,6 +373,7 @@ public class CardMovement : MonoBehaviour, IDragHandler, IDropHandler, IPointerD
         }
     }
 
+    /// Saves an alternative return position for this card.
     public void SetDragReturnPosition(Vector3 localPosition)
     {
         originalPosition = localPosition;
@@ -530,6 +545,7 @@ public class CardMovement : MonoBehaviour, IDragHandler, IDropHandler, IPointerD
         TransitionToState0();
     }
 
+    /// Marks this card as played and optionally locks it in place.
     public void MarkAsPlayed(bool lockInPlay = false)
     {
         cardsBeingDragged.Remove(this);
@@ -555,6 +571,7 @@ public class CardMovement : MonoBehaviour, IDragHandler, IDropHandler, IPointerD
         }
     }
 
+    /// Marks this card as returned to the hand and restores interaction state.
     public void MarkAsReturnedToHand()
     {
         cardsBeingDragged.Remove(this);
@@ -574,6 +591,7 @@ public class CardMovement : MonoBehaviour, IDragHandler, IDropHandler, IPointerD
         }
     }
 
+    /// Assigns the hand manager that owns this card.
     public void SetHandManager(HandManager manager)
     {
         handManager = manager;

@@ -3,8 +3,10 @@ using UnityEngine;
 
 namespace WildCardStudio
 {
+    /// Calculates drawing probabilities for single cards and groups of desired cards.
     public sealed class DeckProbabilityCalculator
     {
+        /// Returns the probability of drawing at least one card from the desired collection.
         public float ProbabilityOfDrawingAny(
             IReadOnlyCollection<CardInstance> desiredCards,
             IReadOnlyCollection<CardInstance> unseenCards,
@@ -45,6 +47,7 @@ namespace WildCardStudio
                 return 1f;
             }
 
+            // Multiply the probability of missing on every draw to obtain the complement.
             float probabilityOfNoMatch = 1f;
             for (int i = 0; i < drawCount; i++)
             {
@@ -54,6 +57,7 @@ namespace WildCardStudio
             return 1f - probabilityOfNoMatch;
         }
 
+        /// Returns the probability of drawing the supplied specific card.
         public float ProbabilityOfDrawingSpecificCard(
             CardInstance desiredCard,
             IReadOnlyCollection<CardInstance> unseenCards,

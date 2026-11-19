@@ -3,15 +3,19 @@ using UnityEngine;
 using LifeAfter;
 using WildCardStudio;
 
+/// Controls entering the discard phase and removing selected cards from the scoring area.
 public class DiscardManager : MonoBehaviour
 {
     [SerializeField] private GameController gameController;
     [SerializeField] private List<Card> discardedCards = new List<Card>();
     [SerializeField, Min(1)] private int cardsToDiscard = 1;
 
+    /// Read-only access to card assets that have been discarded.
     public IReadOnlyList<Card> DiscardedCards => discardedCards;
+    /// Required number of cards that must be selected to complete the discard.
     public int CardsToDiscard => Mathf.Max(1, cardsToDiscard);
 
+    /// Enters or completes the discard phase as appropriate.
     public bool HandleEnter(HandManager handManager, ScoreManager scoreManager)
     {
         if (gameController == null)
@@ -46,6 +50,7 @@ public class DiscardManager : MonoBehaviour
         return true;
     }
 
+    /// Validates and removes the configured number of cards from the scoring area.
     public bool DiscardSelectedCards(ScoreManager scoreManager)
     {
         if (scoreManager == null)

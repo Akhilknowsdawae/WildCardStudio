@@ -5,12 +5,16 @@ using LifeAfter;
 using WildCardStudio;
 using System;
 
+/// Manages the player's hand, card layout, camera views, and hand interactions.
 public class HandManager : MonoBehaviour
 {
     public enum HandViewState
     {
+        /// Normal hand view.
         Neutral,
+        /// Table view with scoring cards shown as a zoomed-in hand.
         ZoomedIn,
+        /// View used while the hand is hidden.
         HandsHidden
     }
 
@@ -72,6 +76,7 @@ public class HandManager : MonoBehaviour
     public HandViewState CurrentHandViewState => handViewState;
     public PlayManager PlayManager => playManager;
 
+    /// Resolves scene references and initializes hand and camera state.
     void Start()
     {
         scoreManager = FindFirstObjectByType<ScoreManager>();
@@ -122,6 +127,7 @@ public class HandManager : MonoBehaviour
         }
     }
 
+    /// Creates a card object for the supplied card asset and adds it to the hand.
     public void AddCardToHand(Card cardData)
     {
         //Creating the cards here
@@ -139,6 +145,7 @@ public class HandManager : MonoBehaviour
         UpdateCardPositions();
     }
 
+    /// Removes a card object from the hand and relayouts remaining cards.
     public void RemoveCardFromHand(GameObject card)
     {
         if (cardsInHand.Remove(card))
@@ -147,6 +154,7 @@ public class HandManager : MonoBehaviour
         }
     }
 
+    /// Restores a card object to the hand if it is not already present.
     public bool ReturnCardToHand(GameObject card)
     {
         if (card == null)
@@ -279,6 +287,7 @@ public class HandManager : MonoBehaviour
         }
     }
 
+    /// Moves the hand transform and updates the down/up state.
     private void SetHandPosition(Vector3 position, bool moveHandDown)
     {
         if (handTransform == null)
@@ -306,6 +315,7 @@ public class HandManager : MonoBehaviour
         }
     }
 
+    /// Updates the current view state and its associated camera and UI transitions.
     private void SetHandViewState(HandViewState nextState)
     {
         if (nextState == handViewState)
@@ -557,6 +567,7 @@ public class HandManager : MonoBehaviour
         }
     }
 
+    /// Attempts to stage a selected hand card beside a target played combo.
     public bool TryStageCardForCombo(GameObject card, GameObject targetCard)
     {
         if (playManager == null)
@@ -673,6 +684,7 @@ public class HandManager : MonoBehaviour
         scoreCardCanvasGroupStates.Clear();
     }
 
+    /// Recalculates the fan layout for every card in the hand.
     private void UpdateCardPositions()
     {
         int cardCount = cardsInHand.Count;

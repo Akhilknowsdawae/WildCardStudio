@@ -3,25 +3,31 @@ using UnityEngine;
 using LifeAfter;
 using WildCardStudio;
 
+/// Coordinates staged cards, played combo sets, and zoomed-in play-area interactions.
 public class PlayManager : MonoBehaviour
 {
     private readonly BasicComboValidator comboValidator = new BasicComboValidator();
 
     private sealed class ValidComboCandidate
     {
+        /// Indices of cards that form a valid staged combination.
         public List<int> cardIndices;
     }
 
     [System.Serializable]
     private class PlayedCardSet
     {
+        /// Cards grouped into this played set.
         public List<GameObject> cards = new List<GameObject>();
+        /// Whether this set is a set or straight.
         public ComboType type = ComboType.Set;
     }
 
     private sealed class PendingCardPlacement
     {
+        /// Card currently moved into the play view.
         public GameObject card;
+        /// Card's original parent before staging.
         public Transform originalParent;
         public Vector3 originalLocalPosition;
         public Quaternion originalLocalRotation;
@@ -53,6 +59,7 @@ public class PlayManager : MonoBehaviour
     [SerializeField] private Vector3 cardScale = Vector3.one;
     [SerializeField] private bool updatePlayedCardPositionsContinuously;
 
+    /// Refreshes played-card layouts when continuous layout updates are enabled.
     private void Update()
     {
         if (updatePlayedCardPositionsContinuously)
@@ -61,6 +68,7 @@ public class PlayManager : MonoBehaviour
         }
     }
 
+        /// Moves scoring-hand cards onto the table and begins zoomed-in play view.
         public bool BeginZoomedInView(HandManager handManager)
         {
             if (handManager == null)
@@ -114,6 +122,7 @@ public class PlayManager : MonoBehaviour
             return true;
         }
 
+        /// Restores every staged card to the scoring hand and ends zoomed-in view.
         public void EndZoomedInView()
         {
             if (pendingCardPlacements.Count == 0)
@@ -151,6 +160,7 @@ public class PlayManager : MonoBehaviour
             zoomedInHandManager = null;
         }
 
+        /// Stages a hand card beside an existing combo or pending target card.
         public bool TryStageCardForCombo(GameObject card, GameObject targetCard)
         {
             if (zoomedInHandManager == null || !zoomedInHandManager.IsZoomedIn)
@@ -274,6 +284,7 @@ public class PlayManager : MonoBehaviour
             return true;
         }
 
+        /// Validates staged cards and updates visual feedback for invalid combinations.
         public void ValidateZoomedInCards(HandManager handManager)
         {
             if (handManager == null || handManager != zoomedInHandManager || !handManager.IsZoomedIn)
@@ -589,6 +600,7 @@ public class PlayManager : MonoBehaviour
             return IsValidCombo(cards, ComboType.Set, out ComboType type) ? type : ComboType.Straight;
         }
 
+    /// Commits all valid staged cards as played combos.
     public void PlaySelectedCards(HandManager handManager)
     {
         CardMovement.HideInvalidComboIndicator();
@@ -825,6 +837,7 @@ public class PlayManager : MonoBehaviour
         }
     }
 
+    /// Adds a card to the play area and creates or updates its played-card set.
     public bool AddPlayedCard(GameObject card)
     {
         if (card == null)

@@ -5,13 +5,16 @@ using LifeAfter;
 using WildCardStudio;
 using System;
 
+/// Loads card assets and deals cards to the hand from a cyclic deck list.
 public class DeckManager : MonoBehaviour
 {
+    /// Cards available to be drawn by this deck.
     public List<Card> allCards = new List<Card>(); //List of cards in the deck
 
     private int currentIndex = 0; //Index to keep track of the current card
     private GameController gameController;
 
+    /// Loads the deck and deals the configured starting hand.
     void Start()
     {
         //Load all card assets from the reo
@@ -41,6 +44,7 @@ public class DeckManager : MonoBehaviour
         }
     }
 
+    /// Draws the next card if the game is in the draw phase.
     public bool DrawCard(HandManager handManager)
     {
         if (gameController == null)

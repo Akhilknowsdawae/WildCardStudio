@@ -4,8 +4,10 @@ using UnityEngine;
 using LifeAfter;
 using WildCardStudio;
 
+/// Tracks the cards in the scoring area, their layout, and both hand and total scores.
 public class ScoreManager : MonoBehaviour
 {
+    /// Cards currently moved into the scoring area.
     public List<GameObject> cardsInPlay = new List<GameObject>();
 
     [SerializeField] private TMP_Text scoringHandScoreText;
@@ -27,12 +29,14 @@ public class ScoreManager : MonoBehaviour
     public float CardSpacing => cardSpacing;
     public float ScoreCardsAlphaWhenHandDown => scoreCardsAlphaWhenHandDown;
 
+    /// Initializes the displayed scoring and total scores.
     private void Start()
     {
         RefreshScoringHandScore();
         RefreshTotalScore();
     }
 
+    /// Updates card positions when continuous layout refresh is enabled.
     private void Update()
     {
         if (updatePlayedCardPositionsContinuously)
@@ -41,6 +45,7 @@ public class ScoreManager : MonoBehaviour
         }
     }
 
+    /// Translates a play-area position into the coordinate system of a supplied transform.
     public Vector3 GetPlayPosition(Transform relativeTo)
     {
         if (playPositionReference == null)
@@ -52,12 +57,14 @@ public class ScoreManager : MonoBehaviour
         return relativeTo != null ? relativeTo.InverseTransformPoint(referencePosition) : referencePosition;
     }
 
+    /// Checks whether a screen-space-relative position is inside the active play area.
     public bool IsPointerInPlayArea(Vector2 localPosition, Transform relativeTo)
     {
         float playAreaBoundary = GetPlayPosition(relativeTo).y - Mathf.Max(0f, playAreaPadding);
         return localPosition.y > playAreaBoundary;
     }
 
+    /// Adds a card to the scoring area and refreshes its score and layout.
     public bool AddPlayedCard(GameObject card)
     {
         if (card == null)
@@ -86,6 +93,7 @@ public class ScoreManager : MonoBehaviour
         return true;
     }
 
+    /// Removes a card from the scoring area and refreshes the layout and score.
     public bool RemovePlayedCard(GameObject card)
     {
         if (!cardsInPlay.Remove(card))
@@ -98,20 +106,24 @@ public class ScoreManager : MonoBehaviour
         return true;
     }
 
+    /// Returns the current score for cards in the scoring area.
     public int CurrentScoringHandScore => CalculateScoringHandScore(out _, out _);
 
+    /// Adds points to the match total and refreshes the total-score display.
     public void AddToTotalScore(int score)
     {
         totalScore += score;
         RefreshTotalScore();
     }
 
+    /// Resets the match total to zero.
     public void ResetTotalScore()
     {
         totalScore = 0;
         RefreshTotalScore();
     }
 
+    /// Refreshes the scoring-hand text and visibility.
     private void RefreshScoringHandScore()
     {
         if (scoringHandScoreText == null)
@@ -125,6 +137,7 @@ public class ScoreManager : MonoBehaviour
         scoringHandScoreText.gameObject.SetActive(scoringCardCount > 0);
     }
 
+    /// Converts cards to instances and calculates set or straight scoring with flush bonuses.
     private int CalculateScoringHandScore(out int scoringCardCount, out bool flushBonusActive)
     {
         List<CardInstance> scoringCards = new List<CardInstance>();
@@ -213,6 +226,7 @@ public class ScoreManager : MonoBehaviour
         return score;
     }
 
+    /// Refreshes the on-screen match-total text.
     private void RefreshTotalScore()
     {
         if (totalScoreText == null)
@@ -224,6 +238,7 @@ public class ScoreManager : MonoBehaviour
         totalScoreText.text = totalScore.ToString();
     }
 
+    /// Reinitializes a card display before it is laid out in the scoring area.
     private static void RefreshCardDisplay(GameObject card)
     {
         CardDisplay cardDisplay = card.GetComponent<CardDisplay>();
@@ -233,6 +248,7 @@ public class ScoreManager : MonoBehaviour
         }
     }
 
+    /// Recalculates the positions of all cards currently in the scoring area.
     public void RefreshPlayedCardPositions()
     {
         UpdatePlayedCardPositions();
