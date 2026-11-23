@@ -8,3 +8,14 @@
 =lose
 {~GOD DAMMIT| lose 2| lose 3}
 ->END
+
+===defaultenemy===
+=intro
+Hello world!
+->END
+=win
+I won!
+->END
+=lose
+I lost...
+->END
