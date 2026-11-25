@@ -42,6 +42,9 @@ public class DeckManager : MonoBehaviour
         {
             DrawCard(hand);
         }
+
+        AIController aiController = FindFirstObjectByType<AIController>();
+        gameController.InitializeMatchFromScene(hand, aiController);
     }
 
     /// Draws the next card if the game is in the draw phase.

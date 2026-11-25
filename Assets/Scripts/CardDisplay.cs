@@ -5,6 +5,8 @@ using TMPro;
 using UnityEngine.UI;
 using LifeAfter;
 
+// Code used from Sinous: https://youtu.be/j36rIYTvLkI?si=ChnzjeBP1k1vf6VF
+
 /// Displays a Card data asset on a card UI object.
 public class CardDisplay : MonoBehaviour
 {

@@ -511,6 +511,8 @@ MonoBehaviour:
   playPhaseText: Play
   discardPhaseText: Discard
   resolveTurnPhaseText: Resolve Turn
+  aiTurnPhaseText: AI Turn
+  aiPhaseDisplayDelay: 0.35
   gameOverPhaseText: Game Over
   baseScoreMultiplier: 1
   startingHandSize: 10
@@ -2427,6 +2429,70 @@ CanvasRenderer:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 1333923723}
   m_CullTransparentMesh: 1
+--- !u!1 &1410554840
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 1410554842}
+  - component: {fileID: 1410554841}
+  m_Layer: 0
+  m_Name: EnemyAI
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!114 &1410554841
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1410554840}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 1f17563b473f4d94b0f91189b1b17ff9, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::WildCardStudio.AIController
+  aiOpponentGameObject: {fileID: 980045957}
+  aiDeck:
+  - {fileID: 11400000, guid: 4c4f94df5b00a3241beff2c9ace77f7d, type: 2}
+  - {fileID: 11400000, guid: 547ba2e8715d44b4aaaff76fced1c7f4, type: 2}
+  - {fileID: 11400000, guid: f8fb45de4b9f8c04c9950a6927d37ec9, type: 2}
+  - {fileID: 11400000, guid: 2bdbd9174e978ba478c75b807a63e01e, type: 2}
+  - {fileID: 11400000, guid: 547ba2e8715d44b4aaaff76fced1c7f4, type: 2}
+  settings:
+    futureDrawHorizon: 2
+    immediatePointsWeight: 1
+    futurePointsWeight: 1
+    opportunityCostWeight: 1
+    cardRetentionWeight: 0.05
+    drawActionCost: 0
+    discardPickupPriority: 0
+    comboScoreMultiplier: 1
+    maxCombosPerTurn: 1
+  personality:
+    behavior: 0
+    behaviorStrength: 1
+--- !u!4 &1410554842
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1410554840}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0.55849, y: -0.25547, z: -4.13959}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &1611251603
 GameObject:
   m_ObjectHideFlags: 0
@@ -2735,6 +2801,7 @@ MonoBehaviour:
   fanSpread: 1
   cardSpacing: 50
   spaceBetweenCardSets: 170
+  stagedCardHoverDistance: 0.5
   firstRowPositionOffset: {x: 0, y: 150, z: 0}
   nextRowPositionOffset: {x: 0, y: -130, z: 0}
   maxCardSetsPerRow: 6
@@ -3240,3 +3307,4 @@ SceneRoots:
   - {fileID: 2074437865}
   - {fileID: 980045961}
   - {fileID: 907082845874662369}
+  - {fileID: 1410554842}

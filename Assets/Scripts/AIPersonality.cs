@@ -38,7 +38,8 @@ namespace WildCardStudio
                 cardRetentionWeight = baseSettings.cardRetentionWeight,
                 drawActionCost = baseSettings.drawActionCost,
                 discardPickupPriority = baseSettings.discardPickupPriority,
-                comboScoreMultiplier = baseSettings.comboScoreMultiplier
+                comboScoreMultiplier = baseSettings.comboScoreMultiplier,
+                maxCombosPerTurn = baseSettings.maxCombosPerTurn
             };
 
             float immediateMultiplier = 1f;

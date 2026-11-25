@@ -1,8 +1,10 @@
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using TMPro;
 using UnityEngine;
+using LifeAfter;
 
 namespace WildCardStudio
 {
@@ -25,7 +27,11 @@ namespace WildCardStudio
         [SerializeField] private string playPhaseText = "Play";
         [SerializeField] private string discardPhaseText = "Discard";
         [SerializeField] private string resolveTurnPhaseText = "Resolve Turn";
+        [SerializeField] private string aiTurnPhaseText = "AI Turn";
         [SerializeField] private string gameOverPhaseText = "Game Over";
+
+        [Header("AI Turn")]
+        [SerializeField, Min(0f)] private float aiPhaseDisplayDelay = 0.35f;
 
         [Header("Systems")]
         private IComboValidator comboValidator;
@@ -38,6 +44,7 @@ namespace WildCardStudio
         [SerializeField, Min(0)] private int startingHandSize = 10;
 
         private readonly List<Combo> activeCombos = new List<Combo>();
+        private bool isAIRunningTurn;
 
         public TurnPhase CurrentPhase => currentPhase;
         public int ActivePlayerIndex => activePlayerIndex;
@@ -63,12 +70,18 @@ namespace WildCardStudio
                 comboValidator = new BasicComboValidator();
             }
 
+            currentPhase = TurnPhase.Draw;
             UpdatePhaseDisplay();
         }
 
         /// Handles Enter and Space shortcuts for advancing or completing the discard phase.
         private void Update()
         {
+            if (isAIRunningTurn)
+            {
+                return;
+            }
+
             if (currentPhase == TurnPhase.Discard && Input.GetKeyDown(KeyCode.Space))
             {
                 DiscardManager discardManager = FindFirstObjectByType<DiscardManager>();
@@ -143,6 +156,46 @@ namespace WildCardStudio
             eventDispatcher.Publish(new MatchStartedEvent(players));
         }
 
+        /// Initializes human and AI runtime players from the scene's hand and assigned AI deck.
+        public bool InitializeMatchFromScene(HandManager humanHand, AIController aiController)
+        {
+            if (humanHand == null)
+            {
+                Debug.LogError("Cannot initialize the match: no human HandManager was provided.", this);
+                return false;
+            }
+
+            if (aiController == null)
+            {
+                Debug.LogError("Cannot initialize the match: no AIController exists in the scene.", this);
+                return false;
+            }
+
+            PlayerState humanPlayer = new PlayerState
+            {
+                PlayerId = "human-player",
+                Name = "Player",
+                IsHuman = true
+            };
+
+            foreach (GameObject cardObject in humanHand.cardsInHand)
+            {
+                CardDisplay display = cardObject != null ? cardObject.GetComponent<CardDisplay>() : null;
+                Card definition = display != null ? display.cardData : null;
+                if (definition == null)
+                {
+                    Debug.LogError("Cannot initialize the human hand: a hand card is missing its card data.", cardObject);
+                    return false;
+                }
+
+                humanPlayer.Hand.Add(CreateCardInstance(definition, cardObject.GetInstanceID().ToString()));
+            }
+
+            PlayerState aiPlayer = aiController.CreateAIOpponent(startingHandSize);
+            InitializeMatch(new List<PlayerState> { humanPlayer, aiPlayer });
+            return true;
+        }
+
         /// Starts a new turn for the active player.
         public void StartTurn()
         {
@@ -151,13 +204,26 @@ namespace WildCardStudio
                 return;
             }
 
+            PlayerState activePlayer = ActivePlayer;
+            bool activePlayerIsAI = IsAIOpponent(activePlayer);
             currentPhase = TurnPhase.Draw;
             UpdatePhaseDisplay();
-            eventDispatcher.Publish(new TurnStartedEvent(ActivePlayer, currentTurnNumber));
+            if (activePlayerIsAI)
+            {
+                Debug.Log(
+                    $"[Enemy Turn] Turn {currentTurnNumber} started for "
+                    + $"{GetPlayerLabel(activePlayer)} ({activePlayer.Hand.Count} cards).",
+                    this);
+            }
+            eventDispatcher.Publish(new TurnStartedEvent(activePlayer, currentTurnNumber));
             ResolveTurnBasedEffects();
+            if (activePlayerIsAI)
+            {
+                StartCoroutine(RunAITurn(activePlayer));
+            }
         }
 
-        /// Advances through draw, play, discard, resolution, and game-over phases.
+        /// Advances through player phases and the AI opponent's play turn.
         public void AdvancePhase()
         {
             if (matchEnded)
@@ -165,6 +231,9 @@ namespace WildCardStudio
                 return;
             }
 
+            TurnPhase previousPhase = currentPhase;
+            int previousTurnNumber = currentTurnNumber;
+            PlayerState previousPlayer = ActivePlayer;
             switch (currentPhase)
             {
                 case TurnPhase.Draw:
@@ -179,6 +248,9 @@ namespace WildCardStudio
                 case TurnPhase.ResolveTurn:
                     ResolveTurnEnd();
                     return;
+                case TurnPhase.AITurn:
+                    ResolveTurnEnd();
+                    return;
                 case TurnPhase.GameOver:
                     return;
                 default:
@@ -186,7 +258,19 @@ namespace WildCardStudio
                     break;
             }
 
+            Debug.Log(
+                $"[Turn Flow] Turn {previousTurnNumber} ({GetPlayerLabel(previousPlayer)}): "
+                + $"{previousPhase} -> {currentPhase}.",
+                this);
             UpdatePhaseDisplay();
+            PlayerState activePlayer = ActivePlayer;
+            if (IsAIOpponent(activePlayer))
+            {
+                Debug.Log(
+                    $"[Enemy Turn] {GetPlayerLabel(activePlayer)} entered phase {currentPhase} "
+                    + $"on turn {currentTurnNumber}.",
+                    this);
+            }
             eventDispatcher.Publish(new PhaseChangedEvent(currentPhase, ActivePlayer, currentTurnNumber));
         }
 
@@ -347,6 +431,28 @@ namespace WildCardStudio
                 return;
             }
 
+            PlayerState resolvedPlayer = ActivePlayer;
+            SynchronizeHumanHand(resolvedPlayer);
+            if (resolvedPlayer != null && resolvedPlayer.Hand.Count == 0)
+            {
+                Debug.Log($"[Turn Flow] {GetPlayerLabel(resolvedPlayer)} has no cards left. Ending the match.", this);
+                ResolveMatchEnd();
+                return;
+            }
+
+            TurnPhase resolvedPhase = currentPhase;
+            int resolvedTurnNumber = currentTurnNumber;
+            bool completingAITurn = IsAIOpponent(resolvedPlayer)
+                && (currentPhase == TurnPhase.ResolveTurn || currentPhase == TurnPhase.AITurn);
+
+            if (IsAIOpponent(resolvedPlayer))
+            {
+                Debug.Log(
+                    $"[Enemy Turn] {GetPlayerLabel(resolvedPlayer)} completed turn "
+                    + $"{currentTurnNumber}.",
+                    this);
+            }
+
             foreach (var combo in activeCombos)
             {
                 RevalidateCombo(combo);
@@ -354,9 +460,373 @@ namespace WildCardStudio
 
             currentTurnNumber++;
             AdvanceToNextPlayer();
+            PlayerState nextPlayer = ActivePlayer;
+            bool nextPlayerIsAI = !completingAITurn && IsAIOpponent(nextPlayer);
             currentPhase = TurnPhase.Draw;
+            Debug.Log(
+                $"[Turn Flow] Turn {resolvedTurnNumber} ({GetPlayerLabel(resolvedPlayer)}) "
+                + $"{resolvedPhase} -> turn {currentTurnNumber} "
+                + $"({GetPlayerLabel(nextPlayer)}) {currentPhase}.",
+                this);
             UpdatePhaseDisplay();
-            eventDispatcher.Publish(new TurnResolvedEvent(ActivePlayer, currentTurnNumber));
+            if (nextPlayerIsAI)
+            {
+                Debug.Log(
+                    $"[AI Turn] Turn {currentTurnNumber} started for {GetPlayerLabel(nextPlayer)} "
+                    + "after resolving the previous turn.",
+                    this);
+            }
+            else if (nextPlayer != null)
+            {
+                Debug.Log(
+                    $"[Turn Resolution] Next player is {GetPlayerLabel(nextPlayer)} "
+                    + $"(PlayerId: {nextPlayer.PlayerId ?? "none"}, IsHuman: {nextPlayer.IsHuman}); "
+                    + $"entering {currentPhase}.",
+                    this);
+            }
+            eventDispatcher.Publish(new PhaseChangedEvent(currentPhase, nextPlayer, currentTurnNumber));
+            eventDispatcher.Publish(new TurnResolvedEvent(nextPlayer, currentTurnNumber));
+            if (nextPlayerIsAI)
+            {
+                StartCoroutine(RunAITurn(nextPlayer));
+            }
+        }
+
+        private bool DiscardAICard(PlayerState player)
+        {
+            AIController aiController = FindFirstObjectByType<AIController>();
+            if (aiController == null)
+            {
+                Debug.LogError("Cannot discard an AI card: no AIController exists in the scene.", this);
+                return false;
+            }
+
+            DiscardManager discardManager = FindFirstObjectByType<DiscardManager>();
+            if (discardManager == null)
+            {
+                Debug.LogError("Cannot discard an AI card: no DiscardManager exists in the scene.", this);
+                return false;
+            }
+
+            CardInstance discardTop = null;
+            if (discardManager.DiscardedCards.Count > 0)
+            {
+                Card topDefinition = discardManager.DiscardedCards[discardManager.DiscardedCards.Count - 1];
+                if (topDefinition != null)
+                {
+                    discardTop = CreateCardInstance(topDefinition, $"discard-top-{topDefinition.GetInstanceID()}");
+                }
+            }
+
+            Debug.Log(
+                $"[AI Discard] Evaluating {GetPlayerLabel(player)}'s {player.Hand.Count} card(s). "
+                + $"Discard pile top: {(discardTop == null ? "none" : FormatCardName(discardTop))}.",
+                this);
+
+            CardInstance candidate = aiController.ChooseDiscardCandidate(player, discardTop);
+            if (candidate == null)
+            {
+                Debug.Log(
+                    $"[AI Discard] {GetPlayerLabel(player)} ends the turn without discarding; "
+                    + "every card is useful in a current or discard-top combo.",
+                    this);
+                return true;
+            }
+
+            if (candidate.Definition == null)
+            {
+                Debug.LogError("Cannot discard the AI's selected card: its card definition is missing.", this);
+                return false;
+            }
+
+            if (!discardManager.AddCardToDiscardPile(candidate.Definition))
+            {
+                return false;
+            }
+
+            player.Hand.Remove(candidate);
+            Debug.Log(
+                $"[AI Discard] {GetPlayerLabel(player)} discarded {FormatCardName(candidate)}. "
+                + $"Hand now contains {player.Hand.Count} card(s).",
+                this);
+            return true;
+        }
+
+        private void SynchronizeHumanHand(PlayerState player)
+        {
+            if (player == null || !player.IsHuman)
+            {
+                return;
+            }
+
+            HandManager handManager = FindFirstObjectByType<HandManager>();
+            if (handManager == null)
+            {
+                Debug.LogError("Cannot synchronize the human hand: no HandManager exists in the scene.", this);
+                return;
+            }
+
+            List<CardInstance> currentHand = new List<CardInstance>(handManager.cardsInHand.Count);
+            foreach (GameObject cardObject in handManager.cardsInHand)
+            {
+                CardDisplay display = cardObject != null ? cardObject.GetComponent<CardDisplay>() : null;
+                Card definition = display != null ? display.cardData : null;
+                if (definition == null)
+                {
+                    Debug.LogError("Cannot synchronize the human hand: a hand card is missing its card data.", cardObject);
+                    return;
+                }
+
+                currentHand.Add(CreateCardInstance(definition, cardObject.GetInstanceID().ToString()));
+            }
+
+            player.Hand = currentHand;
+        }
+
+        private static CardInstance CreateCardInstance(Card definition, string instanceId)
+        {
+            return new CardInstance
+            {
+                InstanceId = instanceId,
+                Definition = definition,
+                Rank = definition.cardRank,
+                Suit = definition.suit != null && definition.suit.Count > 0
+                    ? definition.suit[0]
+                    : default(Suit),
+                Type = definition.cardType != null && definition.cardType.Count > 0
+                    ? definition.cardType[0]
+                    : CardType.Number
+            };
+        }
+
+        private static string GetPlayerLabel(PlayerState player)
+        {
+            if (player == null)
+            {
+                return "null player";
+            }
+
+            return string.IsNullOrWhiteSpace(player.Name)
+                ? player.PlayerId
+                : player.Name;
+        }
+
+        private bool IsAIOpponent(PlayerState player)
+        {
+            if (player == null)
+            {
+                return false;
+            }
+
+            AIController aiController = FindFirstObjectByType<AIController>();
+            return !player.IsHuman
+                || (aiController != null && aiController.IsAIOpponent(player));
+        }
+
+        private IEnumerator RunAITurn(PlayerState player)
+        {
+            isAIRunningTurn = true;
+            try
+            {
+                Debug.Log($"[AI Turn] Starting Draw -> Play -> Discard -> Resolve for {GetPlayerLabel(player)}.", this);
+
+                if (player.Hand == null || player.Hand.Count == 0)
+                {
+                    Debug.LogWarning(
+                        $"[AI Turn] {GetPlayerLabel(player)} has no cards to draw or play. Ending the match.",
+                        this);
+                    ResolveMatchEnd();
+                    yield break;
+                }
+
+                AIController aiController = FindFirstObjectByType<AIController>();
+                if (aiController == null)
+                {
+                    Debug.LogError("Cannot evaluate the AI turn: no AIController exists in the scene.", this);
+                    yield break;
+                }
+
+                Debug.Log($"[AI Turn] {GetPlayerLabel(player)} entered Draw phase.", this);
+                yield return new WaitForSeconds(aiPhaseDisplayDelay);
+                RunAIDrawPhase(player, aiController);
+                if (matchEnded)
+                {
+                    yield break;
+                }
+
+                SetAIPhase(player, TurnPhase.Play);
+                yield return new WaitForSeconds(aiPhaseDisplayDelay);
+                PlayAICombos(player, aiController);
+                if (matchEnded)
+                {
+                    yield break;
+                }
+
+                SetAIPhase(player, TurnPhase.Discard);
+                yield return new WaitForSeconds(aiPhaseDisplayDelay);
+                if (!DiscardAICard(player))
+                {
+                    yield break;
+                }
+
+                if (player.Hand.Count == 0)
+                {
+                    Debug.Log($"[AI Discard] {GetPlayerLabel(player)} has no cards left after discarding.", this);
+                    ResolveMatchEnd();
+                    yield break;
+                }
+
+                SetAIPhase(player, TurnPhase.ResolveTurn);
+                yield return new WaitForSeconds(aiPhaseDisplayDelay);
+                ResolveTurnEnd();
+            }
+            finally
+            {
+                isAIRunningTurn = false;
+            }
+        }
+
+        private void RunAIDrawPhase(PlayerState player, AIController aiController)
+        {
+            DiscardManager discardManager = FindFirstObjectByType<DiscardManager>();
+            CardInstance discardTop = null;
+            if (discardManager != null && discardManager.DiscardedCards.Count > 0)
+            {
+                Card topCard = discardManager.DiscardedCards[discardManager.DiscardedCards.Count - 1];
+                if (topCard != null)
+                {
+                    discardTop = CreateCardInstance(topCard, $"discard-top-{topCard.GetInstanceID()}");
+                }
+            }
+
+            IReadOnlyList<CardInstance> remainingDeck = aiController.GetRemainingAIDeckCards();
+            EnemyAIAction drawAction = aiController.ChooseAction(
+                player,
+                remainingDeck,
+                discardTop,
+                canDraw: true,
+                canPlayCombos: false,
+                canDiscard: false);
+
+            if (drawAction == null)
+            {
+                Debug.LogWarning($"[AI Draw] {GetPlayerLabel(player)} has no available draw.", this);
+                return;
+            }
+
+            CardInstance drawnCard = null;
+            if (drawAction.Type == EnemyAIActionType.DrawFromDiscard)
+            {
+                if (discardManager == null)
+                {
+                    Debug.LogError("AI selected the discard pile, but no DiscardManager exists.", this);
+                    return;
+                }
+
+                Card cardDefinition = discardManager.DrawTopCardFromDiscardPile();
+                if (cardDefinition != null)
+                {
+                    drawnCard = CreateCardInstance(cardDefinition, Guid.NewGuid().ToString());
+                }
+            }
+            else if (drawAction.Type == EnemyAIActionType.DrawFromDeck)
+            {
+                drawnCard = aiController.DrawNextAIDeckCard();
+            }
+
+            if (drawnCard == null)
+            {
+                Debug.LogWarning(
+                    $"[AI Draw] {GetPlayerLabel(player)} could not complete its selected {drawAction.Type} action.",
+                    this);
+                return;
+            }
+
+            player.Hand.Add(drawnCard);
+            Debug.Log(
+                $"[AI Draw] {GetPlayerLabel(player)} drew {FormatCardName(drawnCard)} "
+                + $"from {(drawAction.Type == EnemyAIActionType.DrawFromDiscard ? "the discard pile" : "the deck")}. "
+                + $"Hand now contains {player.Hand.Count} card(s).",
+                this);
+        }
+
+        private void PlayAICombos(PlayerState player, AIController aiController)
+        {
+            int comboLimit = aiController.MaxCombosPerTurn;
+            int combosPlayed = 0;
+            Debug.Log(
+                $"[AI Play] {GetPlayerLabel(player)} may play up to {comboLimit} combo(s) this turn.",
+                this);
+
+            while (combosPlayed < comboLimit && player.Hand.Count > 0)
+            {
+                EnemyAIAction action = aiController.ChooseAction(
+                    player,
+                    aiController.GetRemainingAIDeckCards(),
+                    null,
+                    canDraw: false,
+                    canPlayCombos: true,
+                    canDiscard: false);
+                if (action == null || action.Type != EnemyAIActionType.PlayCombo)
+                {
+                    Debug.Log($"[AI Play] {GetPlayerLabel(player)} has no more valid combos.", this);
+                    break;
+                }
+
+                List<CardInstance> comboCards = action.Cards.ToList();
+                ComboValidationResult validation = TryCreateCombo(player, comboCards, action.ComboType);
+                if (!validation.IsValid)
+                {
+                    Debug.LogWarning(
+                        $"[AI Play] Could not play the selected {action.ComboType}: {validation.Message}",
+                        this);
+                    break;
+                }
+
+                foreach (CardInstance card in comboCards)
+                {
+                    player.Hand.Remove(card);
+                }
+
+                combosPlayed++;
+                Debug.Log(
+                    $"[AI Play] {GetPlayerLabel(player)} played {action.ComboType} "
+                    + $"({string.Join(", ", comboCards.Select(FormatCardName))}). "
+                    + $"Combos this turn: {combosPlayed}/{comboLimit}; hand: {player.Hand.Count}.",
+                    this);
+
+                if (player.Hand.Count == 0)
+                {
+                    Debug.Log($"[AI Play] {GetPlayerLabel(player)} has no cards left. Ending the match.", this);
+                    ResolveMatchEnd();
+                    return;
+                }
+            }
+        }
+
+        private void SetAIPhase(PlayerState player, TurnPhase phase)
+        {
+            currentPhase = phase;
+            UpdatePhaseDisplay();
+            Debug.Log($"[AI Turn] {GetPlayerLabel(player)} entered {phase} phase.", this);
+            eventDispatcher.Publish(new PhaseChangedEvent(currentPhase, player, currentTurnNumber));
+        }
+
+        private static string FormatCardName(CardInstance card)
+        {
+            if (card == null)
+            {
+                return "missing card";
+            }
+
+            if (card.Definition != null && !string.IsNullOrWhiteSpace(card.Definition.cardName))
+            {
+                return card.Definition.cardName;
+            }
+
+            return card.Type == CardType.Number
+                ? $"{card.Rank} of {card.Suit}"
+                : card.Type.ToString();
         }
 
         /// Ends the match and publishes the match-ended event.
@@ -396,15 +866,19 @@ namespace WildCardStudio
                 return;
             }
 
-            phaseDisplayText.text = currentPhase switch
+            string phaseText = currentPhase switch
             {
                 TurnPhase.Draw => drawPhaseText,
                 TurnPhase.Play => playPhaseText,
                 TurnPhase.Discard => discardPhaseText,
                 TurnPhase.ResolveTurn => resolveTurnPhaseText,
                 TurnPhase.GameOver => gameOverPhaseText,
+                TurnPhase.AITurn => string.IsNullOrWhiteSpace(aiTurnPhaseText)
+                    ? "AI Turn"
+                    : aiTurnPhaseText,
                 _ => currentPhase.ToString()
             };
+            phaseDisplayText.text = phaseText;
         }
 
         /// Revalidates an existing combo and updates its validity and lock state.

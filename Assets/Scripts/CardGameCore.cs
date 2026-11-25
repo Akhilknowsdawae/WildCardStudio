@@ -37,7 +37,8 @@ namespace WildCardStudio
         Play,
         Discard,
         ResolveTurn,
-        GameOver
+        GameOver,
+        AITurn
     }
 
     /// Reasons a combo validation operation may fail.

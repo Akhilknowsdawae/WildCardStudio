@@ -2,6 +2,8 @@ using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 
+// Code used from Sinous: https://youtu.be/j36rIYTvLkI?si=ChnzjeBP1k1vf6VF
+
 namespace LifeAfter
 {
     /// Data asset that defines a card's visual, rank, suit, type, and description.

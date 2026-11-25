@@ -15,6 +15,41 @@ public class DiscardManager : MonoBehaviour
     /// Required number of cards that must be selected to complete the discard.
     public int CardsToDiscard => Mathf.Max(1, cardsToDiscard);
 
+    /// Adds a card asset to the top of the discard pile.
+    public bool AddCardToDiscardPile(Card card)
+    {
+        if (card == null)
+        {
+            Debug.LogError("Cannot add a missing card to the discard pile.", this);
+            return false;
+        }
+
+        discardedCards.Add(card);
+        Debug.Log($"Added {card.cardName} to the discard pile.", this);
+        return true;
+    }
+
+    /// Removes and returns the current top card from the discard pile.
+    public Card DrawTopCardFromDiscardPile()
+    {
+        if (discardedCards.Count == 0)
+        {
+            return null;
+        }
+
+        int topIndex = discardedCards.Count - 1;
+        Card topCard = discardedCards[topIndex];
+        if (topCard == null)
+        {
+            Debug.LogWarning("The top discard-pile entry is missing its card asset.", this);
+            return null;
+        }
+
+        discardedCards.RemoveAt(topIndex);
+        Debug.Log($"Drew {topCard.cardName} from the top of the discard pile.", this);
+        return topCard;
+    }
+
     /// Enters or completes the discard phase as appropriate.
     public bool HandleEnter(HandManager handManager, ScoreManager scoreManager)
     {
