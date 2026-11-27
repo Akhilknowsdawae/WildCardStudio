@@ -8,6 +8,20 @@ using LifeAfter;
 
 namespace WildCardStudio
 {
+    public enum CameraState
+    {
+        Normal,
+        DeskView,
+        HideCard
+    }
+
+    public enum PlayerDrawSourceRule
+    {
+        DrawPileOnly,
+        DiscardPileOnly,
+        EitherPile
+    }
+
     /// Coordinates turns, phases, combo validation, scoring, events, and match completion.
     public class GameController : MonoBehaviour
     {
@@ -20,6 +34,10 @@ namespace WildCardStudio
         [SerializeField] private int currentTurnNumber = 1;
         [SerializeField] private bool matchEnded;
         [SerializeField] private bool enterAdvancesPhase = true;
+        [SerializeField] private CameraState cameraState = CameraState.Normal;
+
+        [Header("Draw Rules")]
+        [SerializeField] private PlayerDrawSourceRule playerDrawSourceRule = PlayerDrawSourceRule.EitherPile;
 
         [Header("Phase Display")]
         [SerializeField] private TMP_Text phaseDisplayText;
@@ -32,6 +50,7 @@ namespace WildCardStudio
 
         [Header("AI Turn")]
         [SerializeField, Min(0f)] private float aiPhaseDisplayDelay = 0.35f;
+        [SerializeField] private EnemyHandDisplay enemyHandDisplay;
 
         [Header("Systems")]
         private IComboValidator comboValidator;
@@ -50,12 +69,28 @@ namespace WildCardStudio
         public int ActivePlayerIndex => activePlayerIndex;
         public PlayerState ActivePlayer => players != null && players.Count > 0 ? players[activePlayerIndex] : null;
         public bool MatchEnded => matchEnded;
+        public CameraState CurrentCameraState => cameraState;
         public bool EnterAdvancesPhaseEnabled => enterAdvancesPhase;
         public EventDispatcher Events => eventDispatcher;
         public IReadOnlyList<PlayerState> Players => players;
         public IReadOnlyList<Combo> ActiveCombos => activeCombos;
+        public bool CanPlayerDrawFromDrawPile => playerDrawSourceRule != PlayerDrawSourceRule.DiscardPileOnly;
+        public bool CanPlayerDrawFromDiscardPile => playerDrawSourceRule != PlayerDrawSourceRule.DrawPileOnly;
         /// Starting hand size used when a match initializes.
         public int StartingHandSize => Mathf.Max(0, startingHandSize);
+
+        /// Updates the camera/view state used by the human hand controls.
+        public void SetCameraState(CameraState nextState)
+        {
+            if (cameraState == nextState)
+            {
+                return;
+            }
+
+            CameraState previousState = cameraState;
+            cameraState = nextState;
+            Debug.Log($"[Camera State] {previousState} -> {cameraState}.", this);
+        }
 
         /// Initializes turn systems before scene objects begin interacting.
         private void Awake()
@@ -193,6 +228,21 @@ namespace WildCardStudio
 
             PlayerState aiPlayer = aiController.CreateAIOpponent(startingHandSize);
             InitializeMatch(new List<PlayerState> { humanPlayer, aiPlayer });
+            if (enemyHandDisplay == null)
+            {
+                enemyHandDisplay = FindFirstObjectByType<EnemyHandDisplay>();
+            }
+
+            if (enemyHandDisplay == null)
+            {
+                Debug.LogWarning("The AI opponent has no EnemyHandDisplay; its cards will not be shown.", this);
+            }
+            else
+            {
+                enemyHandDisplay.SynchronizeHand(aiPlayer);
+                enemyHandDisplay.RefreshTotalScore(aiPlayer, activeCombos);
+            }
+
             return true;
         }
 
@@ -303,6 +353,16 @@ namespace WildCardStudio
         {
             if (matchEnded || player == null || player != ActivePlayer)
             {
+                return false;
+            }
+
+            if (player.IsHuman
+                && (fromDiscard ? !CanPlayerDrawFromDiscardPile : !CanPlayerDrawFromDrawPile))
+            {
+                Debug.LogWarning(
+                    $"The configured draw rule does not allow {GetPlayerLabel(player)} "
+                    + $"to draw from the {(fromDiscard ? "discard" : "draw")} pile.",
+                    this);
                 return false;
             }
 
@@ -545,6 +605,11 @@ namespace WildCardStudio
             }
 
             player.Hand.Remove(candidate);
+            if (enemyHandDisplay != null)
+            {
+                enemyHandDisplay.RemoveCardFromHand(candidate);
+            }
+
             Debug.Log(
                 $"[AI Discard] {GetPlayerLabel(player)} discarded {FormatCardName(candidate)}. "
                 + $"Hand now contains {player.Hand.Count} card(s).",
@@ -656,7 +721,7 @@ namespace WildCardStudio
 
                 SetAIPhase(player, TurnPhase.Play);
                 yield return new WaitForSeconds(aiPhaseDisplayDelay);
-                PlayAICombos(player, aiController);
+                yield return PlayAICombos(player, aiController);
                 if (matchEnded)
                 {
                     yield break;
@@ -750,7 +815,7 @@ namespace WildCardStudio
                 this);
         }
 
-        private void PlayAICombos(PlayerState player, AIController aiController)
+        private IEnumerator PlayAICombos(PlayerState player, AIController aiController)
         {
             int comboLimit = aiController.MaxCombosPerTurn;
             int combosPlayed = 0;
@@ -795,11 +860,32 @@ namespace WildCardStudio
                     + $"Combos this turn: {combosPlayed}/{comboLimit}; hand: {player.Hand.Count}.",
                     this);
 
+                if (enemyHandDisplay != null)
+                {
+                    if (enemyHandDisplay.StageCombo(comboCards))
+                    {
+                        enemyHandDisplay.RefreshTotalScore(player, activeCombos);
+                        yield return new WaitForSeconds(aiPhaseDisplayDelay);
+                        if (!enemyHandDisplay.PlayStagedCombo(comboCards, action.ComboType))
+                        {
+                            Debug.LogError(
+                                $"[AI Play] Could not transfer {action.ComboType} visuals to the shared table.",
+                                this);
+                        }
+                    }
+                    else
+                    {
+                        Debug.LogError(
+                            $"[AI Play] Could not stage {action.ComboType} visuals in the enemy scoring area.",
+                            this);
+                    }
+                }
+
                 if (player.Hand.Count == 0)
                 {
                     Debug.Log($"[AI Play] {GetPlayerLabel(player)} has no cards left. Ending the match.", this);
                     ResolveMatchEnd();
-                    return;
+                    yield break;
                 }
             }
         }
@@ -810,6 +896,10 @@ namespace WildCardStudio
             UpdatePhaseDisplay();
             Debug.Log($"[AI Turn] {GetPlayerLabel(player)} entered {phase} phase.", this);
             eventDispatcher.Publish(new PhaseChangedEvent(currentPhase, player, currentTurnNumber));
+            if (enemyHandDisplay != null)
+            {
+                enemyHandDisplay.SynchronizeHand(player);
+            }
         }
 
         private static string FormatCardName(CardInstance card)
@@ -996,13 +1086,21 @@ namespace WildCardStudio
         /// Returns the top card from the discard pile.
         private CardInstance DrawFromDiscardPile()
         {
-            return new CardInstance
+            DiscardManager discardManager = FindFirstObjectByType<DiscardManager>();
+            if (discardManager == null)
             {
-                InstanceId = Guid.NewGuid().ToString(),
-                Rank = 2,
-                Suit = Suit.Candles,
-                Type = CardType.Number
-            };
+                Debug.LogError("Cannot draw from the discard pile: no DiscardManager exists in the scene.", this);
+                return null;
+            }
+
+            Card topCard = discardManager.DrawTopCardFromDiscardPile();
+            if (topCard == null)
+            {
+                Debug.LogWarning("Cannot draw from the discard pile: it has no card on top.", this);
+                return null;
+            }
+
+            return CreateCardInstance(topCard, Guid.NewGuid().ToString());
         }
 
         /// Determines the winning player or returns null if none has won.

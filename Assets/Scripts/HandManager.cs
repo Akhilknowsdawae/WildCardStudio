@@ -81,6 +81,11 @@ public class HandManager : MonoBehaviour
     {
         scoreManager = FindFirstObjectByType<ScoreManager>();
         gameController = FindFirstObjectByType<GameController>();
+        if (gameController != null)
+        {
+            gameController.SetCameraState(CameraState.Normal);
+        }
+
         if (handTransform != null)
         {
             targetHandPosition = handTransform.localPosition;
@@ -355,6 +360,21 @@ public class HandManager : MonoBehaviour
         }
 
         handViewState = nextState;
+        if (gameController == null)
+        {
+            gameController = FindFirstObjectByType<GameController>();
+        }
+
+        if (gameController != null)
+        {
+            CameraState cameraState = nextState == HandViewState.ZoomedIn
+                ? CameraState.DeskView
+                : nextState == HandViewState.HandsHidden
+                    ? CameraState.HideCard
+                    : CameraState.Normal;
+            gameController.SetCameraState(cameraState);
+        }
+
         handIsDown = handViewState != HandViewState.Neutral;
         if (handViewState == HandViewState.Neutral)
         {

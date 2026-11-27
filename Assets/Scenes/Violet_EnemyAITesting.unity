@@ -2547,6 +2547,7 @@ MonoBehaviour:
   currentTurnNumber: 1
   matchEnded: 0
   enterAdvancesPhase: 1
+  cameraState: 0
   phaseDisplayText: {fileID: 990526466}
   drawPhaseText: Draw
   playPhaseText: Play

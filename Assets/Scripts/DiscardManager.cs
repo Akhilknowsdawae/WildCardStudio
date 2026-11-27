@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.UI;
 using LifeAfter;
 using WildCardStudio;
 
@@ -9,11 +10,57 @@ public class DiscardManager : MonoBehaviour
     [SerializeField] private GameController gameController;
     [SerializeField] private List<Card> discardedCards = new List<Card>();
     [SerializeField, Min(1)] private int cardsToDiscard = 1;
+    [SerializeField] private Transform discardPilePosition;
+    [SerializeField, Min(0f)] private float verticalOffset = 10f;
+
+    private readonly List<GameObject> discardedCardVisuals = new List<GameObject>();
+    private GameObject cardPrefab;
+    private Vector3 cardScale = Vector3.one;
 
     /// Read-only access to card assets that have been discarded.
     public IReadOnlyList<Card> DiscardedCards => discardedCards;
+    public Transform DiscardPilePosition => discardPilePosition;
+    public GameObject TopDiscardCardVisual => discardedCardVisuals.Count > 0
+        ? discardedCardVisuals[discardedCardVisuals.Count - 1]
+        : null;
     /// Required number of cards that must be selected to complete the discard.
     public int CardsToDiscard => Mathf.Max(1, cardsToDiscard);
+
+    /// Builds visuals for any cards already assigned to the discard pile.
+    private void Start()
+    {
+        HandManager handManager = FindFirstObjectByType<HandManager>();
+        if (handManager != null)
+        {
+            cardPrefab = handManager.cardPrefab;
+        }
+
+        PlayManager playManager = FindFirstObjectByType<PlayManager>();
+        if (playManager != null)
+        {
+            cardScale = playManager.CardScale;
+        }
+
+        if (discardPilePosition == null)
+        {
+            Debug.LogWarning("Discarded cards will not be displayed until a Discard Pile Position is assigned.", this);
+            return;
+        }
+
+        if (cardPrefab == null)
+        {
+            Debug.LogError("Cannot display discarded cards: no card prefab is assigned to the HandManager.", this);
+            return;
+        }
+
+        if (playManager == null)
+        {
+            Debug.LogError("Cannot size discarded cards: no PlayManager exists in the scene.", this);
+            return;
+        }
+
+        RefreshDiscardPileVisuals();
+    }
 
     /// Adds a card asset to the top of the discard pile.
     public bool AddCardToDiscardPile(Card card)
@@ -25,6 +72,7 @@ public class DiscardManager : MonoBehaviour
         }
 
         discardedCards.Add(card);
+        RefreshDiscardPileVisuals();
         Debug.Log($"Added {card.cardName} to the discard pile.", this);
         return true;
     }
@@ -46,6 +94,7 @@ public class DiscardManager : MonoBehaviour
         }
 
         discardedCards.RemoveAt(topIndex);
+        RefreshDiscardPileVisuals();
         Debug.Log($"Drew {topCard.cardName} from the top of the discard pile.", this);
         return topCard;
     }
@@ -145,7 +194,68 @@ public class DiscardManager : MonoBehaviour
             Destroy(selectedCard);
         }
 
+        RefreshDiscardPileVisuals();
         Debug.Log($"Discard complete. Discard pile now contains {discardedCards.Count} card(s).", this);
         return true;
+    }
+
+    /// Recreates the visual stack so the newest discard is visible at the top.
+    private void RefreshDiscardPileVisuals()
+    {
+        foreach (GameObject visual in discardedCardVisuals)
+        {
+            if (visual != null)
+            {
+                Destroy(visual);
+            }
+        }
+
+        discardedCardVisuals.Clear();
+        if (discardPilePosition == null || cardPrefab == null)
+        {
+            return;
+        }
+
+        for (int i = 0; i < discardedCards.Count; i++)
+        {
+            Card card = discardedCards[i];
+            if (card == null)
+            {
+                Debug.LogWarning($"Discard pile entry {i} has no card asset and cannot be displayed.", this);
+                discardedCardVisuals.Add(null);
+                continue;
+            }
+
+            GameObject visual = Instantiate(cardPrefab, discardPilePosition, false);
+            visual.name = $"{card.cardName} Discard Visual";
+            visual.transform.localPosition = Vector3.up * verticalOffset * i;
+            visual.transform.localScale = cardScale;
+
+            CardDisplay display = visual.GetComponent<CardDisplay>();
+            if (display == null)
+            {
+                Debug.LogError("Cannot display a discarded card: the card prefab has no CardDisplay component.", visual);
+                Destroy(visual);
+                discardedCardVisuals.Add(null);
+                continue;
+            }
+
+            display.cardData = card;
+            display.UpdateCardDisplay();
+
+            CardMovement movement = visual.GetComponent<CardMovement>();
+            if (movement != null)
+            {
+                movement.enabled = false;
+            }
+
+            foreach (Graphic graphic in visual.GetComponentsInChildren<Graphic>(true))
+            {
+                graphic.raycastTarget = false;
+            }
+
+            visual.transform.SetAsLastSibling();
+            discardedCardVisuals.Add(visual);
+        }
     }
 }

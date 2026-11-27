@@ -40,6 +40,8 @@ public class PlayManager : MonoBehaviour
     [SerializeField] private List<PlayedCardSet> playedCardSets = new List<PlayedCardSet>();
     private readonly List<PendingCardPlacement> pendingCardPlacements = new List<PendingCardPlacement>();
     private HandManager zoomedInHandManager;
+    private GameObject selectedPendingCard;
+    private PlayedCardSet selectedTargetCombo;
 
     [Header("Card Layout")]
     [SerializeField] private ScoreManager scoreManager;
@@ -49,8 +51,6 @@ public class PlayManager : MonoBehaviour
     [SerializeField] private float fanSpread = 7.55f;
     [SerializeField] private float cardSpacing = 100f;
     [SerializeField] private float spaceBetweenCardSets = 250f;
-    [SerializeField, Min(0f), Tooltip("Gap between a staged card and its combo, in played-card parent local units.")]
-    private float stagedCardHoverDistance = 0.5f;
     [SerializeField] private Vector3 firstRowPositionOffset = Vector3.zero;
     [SerializeField] private Vector3 nextRowPositionOffset = new Vector3(0f, 160f, 0f);
     [SerializeField, Min(1)] private int maxCardSetsPerRow = 6;
@@ -58,6 +58,58 @@ public class PlayManager : MonoBehaviour
     [SerializeField] private float verticalSpacing = 100f;
     [SerializeField] private Vector3 cardScale = Vector3.one;
     [SerializeField] private bool updatePlayedCardPositionsContinuously;
+
+    /// Scale applied to cards in the play area.
+    public Vector3 CardScale => cardScale;
+
+    /// Registers and lays out an opponent combo without applying the human scoring flow.
+    public bool AddOpponentCombo(IReadOnlyList<GameObject> comboCards, ComboType comboType)
+    {
+        if (comboCards == null || comboCards.Count == 0)
+        {
+            Debug.LogError("Cannot add an opponent combo to the table: no cards were supplied.", this);
+            return false;
+        }
+
+        if (playedCardsParent == null)
+        {
+            Debug.LogError("Cannot add an opponent combo to the table: Played Cards Parent is not assigned.", this);
+            return false;
+        }
+
+        HashSet<GameObject> uniqueCards = new HashSet<GameObject>();
+        foreach (GameObject card in comboCards)
+        {
+            if (card == null || !uniqueCards.Add(card) || cardsInPlay.Contains(card))
+            {
+                Debug.LogError("Cannot add an opponent combo to the table: a card is missing or already registered.", this);
+                return false;
+            }
+        }
+
+        PlayedCardSet opponentSet = new PlayedCardSet
+        {
+            cards = new List<GameObject>(comboCards),
+            type = comboType
+        };
+        foreach (GameObject card in opponentSet.cards)
+        {
+            card.transform.SetParent(playedCardsParent, false);
+            card.transform.SetAsLastSibling();
+            cardsInPlay.Add(card);
+
+            CardMovement movement = card.GetComponent<CardMovement>();
+            if (movement != null)
+            {
+                movement.MarkAsPlayed(true);
+            }
+        }
+
+        playedCardSets.Add(opponentSet);
+        UpdatePlayedCardPositions();
+        Debug.Log($"[AI Play] Added {opponentSet.cards.Count} opponent card(s) to the shared table.", this);
+        return true;
+    }
 
     /// Refreshes played-card layouts when continuous layout updates are enabled.
     private void Update()
@@ -95,6 +147,7 @@ public class PlayManager : MonoBehaviour
                 return false;
             }
 
+            ClearZoomedInComboSelection();
             zoomedInHandManager = handManager;
             List<GameObject> scoringCards = new List<GameObject>(scoreManager.cardsInPlay);
             foreach (GameObject card in scoringCards)
@@ -125,6 +178,7 @@ public class PlayManager : MonoBehaviour
         /// Restores every staged card to the scoring hand and ends zoomed-in view.
         public void EndZoomedInView()
         {
+            ClearZoomedInComboSelection();
             if (pendingCardPlacements.Count == 0)
             {
                 zoomedInHandManager = null;
@@ -137,6 +191,12 @@ public class PlayManager : MonoBehaviour
                 if (placement.card == null)
                 {
                     continue;
+                }
+
+                if (placement.targetSet != null)
+                {
+                    placement.targetSet.cards.Remove(placement.card);
+                    cardsInPlay.Remove(placement.card);
                 }
 
                 if (scoreManager != null && !scoreManager.cardsInPlay.Contains(placement.card))
@@ -158,6 +218,74 @@ public class PlayManager : MonoBehaviour
 
             pendingCardPlacements.Clear();
             zoomedInHandManager = null;
+            UpdatePlayedCardPositions();
+        }
+
+        /// Selects a pending card and a table combo using clicks in the zoomed-in view.
+        public void HandleZoomedInCardClick(GameObject clickedCard)
+        {
+            if (zoomedInHandManager == null
+                || !zoomedInHandManager.IsZoomedIn
+                || clickedCard == null)
+            {
+                return;
+            }
+
+            PendingCardPlacement pendingCard = pendingCardPlacements.Find(item => item.card == clickedCard);
+            if (pendingCard != null)
+            {
+                if (selectedPendingCard == clickedCard)
+                {
+                    SetCardComboSelectionHighlight(selectedPendingCard, false);
+                    selectedPendingCard = null;
+                    Debug.Log("[Combo Selection] Cleared the selected card.", this);
+                    return;
+                }
+
+                SetCardComboSelectionHighlight(selectedPendingCard, false);
+                selectedPendingCard = clickedCard;
+                SetCardComboSelectionHighlight(selectedPendingCard, true);
+                if (selectedTargetCombo == null)
+                {
+                    Debug.Log(
+                        $"[Combo Selection] Selected {clickedCard.name}. Click a table combo to add it there.",
+                        clickedCard);
+                    return;
+                }
+
+                TryStageSelectedCardInCombo();
+                return;
+            }
+
+            PlayedCardSet clickedCombo = FindPlayedCardSet(clickedCard);
+            if (clickedCombo == null)
+            {
+                Debug.LogWarning(
+                    $"[Combo Selection] {clickedCard.name} is not a pending card or a table combo card.",
+                    clickedCard);
+                return;
+            }
+
+            if (selectedTargetCombo == clickedCombo)
+            {
+                SetComboSelectionHighlight(selectedTargetCombo, false);
+                selectedTargetCombo = null;
+                Debug.Log("[Combo Selection] Cleared the selected target combo.", this);
+                return;
+            }
+
+            SetComboSelectionHighlight(selectedTargetCombo, false);
+            selectedTargetCombo = clickedCombo;
+            SetComboSelectionHighlight(selectedTargetCombo, true);
+            if (selectedPendingCard == null)
+            {
+                Debug.Log(
+                    $"[Combo Selection] Selected a table combo. Click a pending card to add it.",
+                    this);
+                return;
+            }
+
+            TryStageSelectedCardInCombo();
         }
 
         /// Stages a hand card beside an existing combo or pending target card.
@@ -192,6 +320,17 @@ public class PlayManager : MonoBehaviour
                 return false;
             }
 
+            if (placement.targetSet != null && placement.targetSet != targetSet)
+            {
+                Debug.LogWarning("A staged card cannot be moved between existing combos.", this);
+                return false;
+            }
+
+            if (targetSet.cards.Contains(card))
+            {
+                return true;
+            }
+
             List<GameObject> proposedCards = new List<GameObject>(targetSet.cards);
             foreach (PendingCardPlacement stagedPlacement in pendingCardPlacements)
             {
@@ -199,89 +338,126 @@ public class PlayManager : MonoBehaviour
                     && stagedPlacement.targetSet == targetSet
                     && stagedPlacement.card != null)
                 {
-                    proposedCards.Add(stagedPlacement.card);
+                    if (!proposedCards.Contains(stagedPlacement.card))
+                    {
+                        proposedCards.Add(stagedPlacement.card);
+                    }
                 }
             }
 
             proposedCards.Add(card);
             if (!IsValidCombo(proposedCards, targetSet.type, out ComboType validatedType))
             {
-                placement.targetSet = null;
-                return false;
-            }
-
-            if (!TryPositionStagedCardAboveCombo(placement, targetSet, targetCard))
-            {
                 return false;
             }
 
             targetSet.type = validatedType;
             placement.targetSet = targetSet;
+            targetSet.cards.Add(card);
+            if (!cardsInPlay.Contains(card))
+            {
+                cardsInPlay.Add(card);
+            }
+
+            UpdatePlayedCardPositions();
             return true;
         }
 
-        private bool TryPositionStagedCardAboveCombo(
-            PendingCardPlacement placement,
-            PlayedCardSet targetSet,
-            GameObject fallbackTarget)
+        private void TryStageSelectedCardInCombo()
         {
-            GameObject anchorCard = null;
-            Vector3 anchorLocalPosition = Vector3.zero;
-            bool useSavedPendingPosition = false;
-
-            foreach (GameObject existingCard in targetSet.cards)
+            if (selectedPendingCard == null || selectedTargetCombo == null)
             {
-                if (existingCard != null)
+                return;
+            }
+
+            GameObject targetCard = GetComboAnchor(selectedTargetCombo);
+            if (targetCard == null)
+            {
+                Debug.LogError("Cannot add a card to the selected combo: it has no valid cards.", this);
+                return;
+            }
+
+            if (!TryStageCardForCombo(selectedPendingCard, targetCard))
+            {
+                CardMovement selectedMovement = selectedPendingCard.GetComponent<CardMovement>();
+                selectedMovement?.ShowInvalidComboIndicator();
+                Debug.LogWarning(
+                    $"[Combo Selection] {selectedPendingCard.name} cannot be added to the selected combo.",
+                    selectedPendingCard);
+                return;
+            }
+
+            GameObject stagedCard = selectedPendingCard;
+            selectedPendingCard = null;
+            SetCardComboSelectionHighlight(stagedCard, false);
+            SetComboSelectionHighlight(selectedTargetCombo, true);
+            Debug.Log(
+                $"[Combo Selection] Added {stagedCard.name} to the selected combo.",
+                stagedCard);
+        }
+
+        private static GameObject GetComboAnchor(PlayedCardSet combo)
+        {
+            if (combo == null || combo.cards == null)
+            {
+                return null;
+            }
+
+            foreach (GameObject card in combo.cards)
+            {
+                if (card != null)
                 {
-                    anchorCard = existingCard;
-                    break;
+                    return card;
                 }
             }
 
-            if (anchorCard == null)
+            return null;
+        }
+
+        private void ClearZoomedInComboSelection()
+        {
+            SetCardComboSelectionHighlight(selectedPendingCard, false);
+            SetComboSelectionHighlight(selectedTargetCombo, false);
+            selectedPendingCard = null;
+            selectedTargetCombo = null;
+        }
+
+        private void SetComboSelectionHighlight(PlayedCardSet combo, bool highlighted)
+        {
+            if (combo == null)
             {
-                foreach (PendingCardPlacement stagedPlacement in pendingCardPlacements)
+                return;
+            }
+
+            if (combo.cards != null)
+            {
+                foreach (GameObject card in combo.cards)
                 {
-                    if (stagedPlacement != placement
-                        && stagedPlacement.targetSet == targetSet
-                        && stagedPlacement.card != null)
-                    {
-                        anchorCard = stagedPlacement.card;
-                        anchorLocalPosition = stagedPlacement.zoomedInLocalPosition;
-                        useSavedPendingPosition = true;
-                        break;
-                    }
+                    SetCardComboSelectionHighlight(card, highlighted);
                 }
             }
 
-            if (anchorCard == null)
+            foreach (PendingCardPlacement placement in pendingCardPlacements)
             {
-                anchorCard = fallbackTarget;
+                if (placement.targetSet == combo)
+                {
+                    SetCardComboSelectionHighlight(placement.card, highlighted);
+                }
+            }
+        }
+
+        private static void SetCardComboSelectionHighlight(GameObject card, bool highlighted)
+        {
+            if (card == null)
+            {
+                return;
             }
 
-            RectTransform stagedRect = placement.card.GetComponent<RectTransform>();
-            RectTransform anchorRect = anchorCard != null
-                ? anchorCard.GetComponent<RectTransform>()
-                : null;
-            if (stagedRect == null || anchorRect == null || playedCardsParent == null)
+            CardMovement movement = card.GetComponent<CardMovement>();
+            if (movement != null)
             {
-                Debug.LogError("Cannot position the staged card above its combo: a card RectTransform or Played Cards Parent is missing.", this);
-                return false;
+                movement.SetComboSelectionHighlight(highlighted);
             }
-
-            if (!useSavedPendingPosition)
-            {
-                anchorLocalPosition = playedCardsParent.InverseTransformPoint(anchorCard.transform.position);
-            }
-
-            Vector3 anchorUp = playedCardsParent.InverseTransformDirection(anchorCard.transform.up).normalized;
-            float cardHalfHeight = stagedRect.rect.height * stagedRect.localScale.y * 0.5f;
-            float anchorHalfHeight = anchorRect.rect.height * anchorRect.localScale.y * 0.5f;
-            float hoverOffset = cardHalfHeight + anchorHalfHeight + stagedCardHoverDistance;
-
-            placement.card.transform.localPosition = anchorLocalPosition + anchorUp * hoverOffset;
-            placement.card.transform.localRotation = anchorCard.transform.localRotation;
-            return true;
         }
 
         /// Validates staged cards and updates visual feedback for invalid combinations.
@@ -292,6 +468,7 @@ public class PlayManager : MonoBehaviour
                 return;
             }
 
+            ClearZoomedInComboSelection();
             CardMovement.HideInvalidComboIndicator();
             if (pendingCardPlacements.Count == 0)
             {
@@ -311,7 +488,9 @@ public class PlayManager : MonoBehaviour
                 List<GameObject> cardsInCombo = new List<GameObject>(targetSet.cards);
                 foreach (PendingCardPlacement addition in pendingCardPlacements)
                 {
-                    if (addition.targetSet == targetSet && addition.card != null)
+                    if (addition.targetSet == targetSet
+                        && addition.card != null
+                        && !cardsInCombo.Contains(addition.card))
                     {
                         cardsInCombo.Add(addition.card);
                     }
@@ -354,6 +533,12 @@ public class PlayManager : MonoBehaviour
                 {
                     if (invalidCards.Contains(placement.card))
                     {
+                        if (placement.targetSet != null)
+                        {
+                            placement.targetSet.cards.Remove(placement.card);
+                            cardsInPlay.Remove(placement.card);
+                        }
+
                         CardMovement movement = placement.card.GetComponent<CardMovement>();
                         if (movement != null)
                         {
@@ -368,6 +553,7 @@ public class PlayManager : MonoBehaviour
                     }
                 }
 
+                UpdatePlayedCardPositions();
                 return;
             }
 
@@ -389,7 +575,10 @@ public class PlayManager : MonoBehaviour
 
                 if (placement.targetSet != null)
                 {
-                    placement.targetSet.cards.Add(placement.card);
+                    if (!placement.targetSet.cards.Contains(placement.card))
+                    {
+                        placement.targetSet.cards.Add(placement.card);
+                    }
                 }
 
                 if (!cardsInPlay.Contains(placement.card))

@@ -26,6 +26,7 @@ public class CardMovement : MonoBehaviour, IDragHandler, IDropHandler, IPointerD
     private bool isPlayed;
     private bool isLockedInPlay;
     private bool isSelected;
+    private bool isComboSelectionHighlighted;
     private bool wasDragged;
     private bool isDraggingPlayedCardToHand;
 
@@ -59,6 +60,16 @@ public class CardMovement : MonoBehaviour, IDragHandler, IDropHandler, IPointerD
         if (invalidComboIndicator != null)
         {
             invalidComboIndicator.SetActive(false);
+        }
+    }
+
+    /// Shows or hides the highlight used for zoomed-in combo selection.
+    public void SetComboSelectionHighlight(bool highlighted)
+    {
+        isComboSelectionHighlighted = highlighted;
+        if (glowEffect != null)
+        {
+            glowEffect.SetActive(highlighted || isSelected || currentState == 1);
         }
     }
 
@@ -144,7 +155,7 @@ public class CardMovement : MonoBehaviour, IDragHandler, IDropHandler, IPointerD
         rectTransform.localPosition = originalPosition; //Reset Position
         if (glowEffect != null)
         {
-            glowEffect.SetActive(isSelected);
+            glowEffect.SetActive(isSelected || isComboSelectionHighlighted);
         }
 
         if (playArrow != null)
@@ -156,7 +167,13 @@ public class CardMovement : MonoBehaviour, IDragHandler, IDropHandler, IPointerD
     /// Stores the card's transform and enters hover state.
     public void OnPointerEnter(PointerEventData eventData)
     {
-        if (currentState == 0 && !isLockedInPlay) // Only transition to hovered state if currently in normal state
+        if (handManager == null)
+        {
+            handManager = FindFirstObjectByType<HandManager>();
+        }
+
+        bool canSelectLockedComboCard = isLockedInPlay && handManager != null && handManager.IsZoomedIn;
+        if (currentState == 0 && (!isLockedInPlay || canSelectLockedComboCard))
         {
             originalPosition = rectTransform.localPosition; // Store the original position
             originalRotation = rectTransform.localRotation; // Store the original rotation
@@ -179,7 +196,13 @@ public class CardMovement : MonoBehaviour, IDragHandler, IDropHandler, IPointerD
     /// Starts selection or drag behavior when the pointer presses this card.
     public void OnPointerDown(PointerEventData eventData)
     {
-        if (currentState == 1 && !isLockedInPlay)
+        if (handManager == null)
+        {
+            handManager = FindFirstObjectByType<HandManager>();
+        }
+
+        bool canSelectLockedComboCard = isLockedInPlay && handManager != null && handManager.IsZoomedIn;
+        if (currentState == 1 && (!isLockedInPlay || canSelectLockedComboCard))
         {
             wasDragged = false;
             if (gameController == null)
@@ -188,6 +211,11 @@ public class CardMovement : MonoBehaviour, IDragHandler, IDropHandler, IPointerD
             }
 
             if (gameController != null && gameController.CurrentPhase == TurnPhase.Draw)
+            {
+                return;
+            }
+
+            if (canSelectLockedComboCard)
             {
                 return;
             }
@@ -225,8 +253,27 @@ public class CardMovement : MonoBehaviour, IDragHandler, IDropHandler, IPointerD
     /// Toggles selection when the pointer click completes without dragging.
     public void OnPointerClick(PointerEventData eventData)
     {
-        if (isLockedInPlay || wasDragged)
+        if (handManager == null)
         {
+            handManager = FindFirstObjectByType<HandManager>();
+        }
+
+        bool isZoomedIn = handManager != null && handManager.IsZoomedIn;
+        if (wasDragged || (isLockedInPlay && !isZoomedIn))
+        {
+            return;
+        }
+
+        if (isZoomedIn)
+        {
+            PlayManager playManager = handManager.PlayManager;
+            if (playManager == null)
+            {
+                Debug.LogError("Cannot select a zoomed-in combo: no PlayManager is assigned to the HandManager.", this);
+                return;
+            }
+
+            playManager.HandleZoomedInCardClick(gameObject);
             return;
         }
 
@@ -553,6 +600,7 @@ public class CardMovement : MonoBehaviour, IDragHandler, IDropHandler, IPointerD
         isPlayed = true;
         isLockedInPlay = lockInPlay;
         isSelected = false;
+        isComboSelectionHighlighted = false;
         currentState = 0;
         rectTransform.localScale = originalScale;
         if (glowEffect != null)
@@ -578,6 +626,7 @@ public class CardMovement : MonoBehaviour, IDragHandler, IDropHandler, IPointerD
         isPlayed = false;
         isLockedInPlay = false;
         isSelected = false;
+        isComboSelectionHighlighted = false;
         currentState = 0;
         rectTransform.localScale = originalScale;
         if (glowEffect != null)

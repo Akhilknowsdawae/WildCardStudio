@@ -93,7 +93,8 @@ namespace WildCardStudio
         private GameObject aiOpponentGameObject;
 
         [Header("AI Deck")]
-        [SerializeField, Tooltip("Assign the card assets available to this AI. This list is not populated automatically.")]
+        [SerializeField] private EnemyDeckManager enemyDeckManager;
+        [SerializeField, Tooltip("Fallback deck used only when no EnemyDeckManager is assigned.")]
         private List<Card> aiDeck = new List<Card>();
 
         [Header("AI Settings")]
@@ -110,7 +111,7 @@ namespace WildCardStudio
 
         public EnemyAIHandAnalysis LastHandAnalysis { get; private set; }
         public GameObject AIOpponentGameObject => aiOpponentGameObject;
-        public IReadOnlyList<Card> AIDeck => aiDeck;
+        public IReadOnlyList<Card> AIDeck => GetAIDeck();
         public int MaxCombosPerTurn => Mathf.Max(0, settings != null ? settings.maxCombosPerTurn : 1);
 
         /// Returns whether a runtime player represents this AI's opponent.
@@ -143,7 +144,7 @@ namespace WildCardStudio
             aiOpponentGameObject = aiOpponent;
         }
 
-        /// Creates runtime opponent state from the deck explicitly assigned in the Inspector.
+        /// Creates runtime opponent state from the original deck held by EnemyDeckManager.
         public PlayerState CreateAIOpponent(int startingHandSize)
         {
             string opponentName = aiOpponentGameObject != null
@@ -156,17 +157,18 @@ namespace WildCardStudio
                 IsHuman = false
             };
 
-            if (aiDeck == null)
+            IReadOnlyList<Card> deck = GetAIDeck();
+            if (deck == null)
             {
                 nextAIDeckIndex = 0;
                 return opponent;
             }
 
-            int cardsToDeal = Mathf.Min(Mathf.Max(0, startingHandSize), aiDeck.Count);
+            int cardsToDeal = Mathf.Min(Mathf.Max(0, startingHandSize), deck.Count);
             nextAIDeckIndex = cardsToDeal;
             for (int i = 0; i < cardsToDeal; i++)
             {
-                Card definition = aiDeck[i];
+                Card definition = deck[i];
                 if (definition == null)
                 {
                     Debug.LogWarning($"AI deck entry {i} is not assigned and will be skipped.", this);
@@ -194,14 +196,15 @@ namespace WildCardStudio
         public IReadOnlyList<CardInstance> GetRemainingAIDeckCards()
         {
             List<CardInstance> remainingCards = new List<CardInstance>();
-            if (aiDeck == null)
+            IReadOnlyList<Card> deck = GetAIDeck();
+            if (deck == null)
             {
                 return remainingCards;
             }
 
-            for (int i = nextAIDeckIndex; i < aiDeck.Count; i++)
+            for (int i = nextAIDeckIndex; i < deck.Count; i++)
             {
-                Card definition = aiDeck[i];
+                Card definition = deck[i];
                 if (definition != null)
                 {
                     remainingCards.Add(CreateCardInstance(definition));
@@ -214,14 +217,15 @@ namespace WildCardStudio
         /// Draws the next assigned card from the AI deck, skipping unassigned entries.
         public CardInstance DrawNextAIDeckCard()
         {
-            if (aiDeck == null)
+            IReadOnlyList<Card> deck = GetAIDeck();
+            if (deck == null)
             {
                 return null;
             }
 
-            while (nextAIDeckIndex < aiDeck.Count)
+            while (nextAIDeckIndex < deck.Count)
             {
-                Card definition = aiDeck[nextAIDeckIndex++];
+                Card definition = deck[nextAIDeckIndex++];
                 if (definition == null)
                 {
                     Debug.LogWarning("Skipping an unassigned card in the AI deck.", this);
@@ -232,6 +236,16 @@ namespace WildCardStudio
             }
 
             return null;
+        }
+
+        private IReadOnlyList<Card> GetAIDeck()
+        {
+            if (enemyDeckManager == null)
+            {
+                enemyDeckManager = FindFirstObjectByType<EnemyDeckManager>();
+            }
+
+            return enemyDeckManager != null ? enemyDeckManager.InitialDeck : aiDeck;
         }
 
         private static CardInstance CreateCardInstance(Card definition)
